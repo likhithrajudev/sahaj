@@ -10,9 +10,12 @@ RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/sdk/package.json packages/sdk/
 COPY apps/web/package.json apps/web/
 COPY apps/console/package.json apps/console/
-RUN pnpm install --frozen-lockfile --filter "@sahaj/web..." --filter "@sahaj/console..."
+COPY apps/api/package.json apps/api/
+# The whole workspace, like CI: a filtered install resolves the two React type versions differently.
+RUN pnpm install --frozen-lockfile
 COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 COPY apps/console apps/console

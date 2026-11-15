@@ -101,7 +101,7 @@ export async function signOut() {
 }
 
 /** fetch() for the Sahaj API: adds the access token and retries once after a refresh on 401. */
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiResponse(path: string, init: RequestInit = {}): Promise<Response> {
   const call = async (token: string | null) =>
     fetch(path, {
       ...init,
@@ -121,5 +121,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     const message = typeof detail?.detail === "string" ? detail.detail : detail?.detail?.message;
     throw new Error(message || `Request failed (${r.status})`);
   }
-  return r.status === 204 ? (undefined as T) : r.json();
+  return r;
+}
+
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await apiResponse(path, init);
+  return response.status === 204 ? (undefined as T) : response.json();
 }

@@ -68,6 +68,9 @@ export function MenuSheet() {
           <Row icon="videocam" onClick={() => openSheet("kyc")}>
             <span className="flex items-center gap-2">{t("kycMenu")}{kyc && <Badge tone={kyc.case?.scheduled_for ? "success" : "warm"}>{t(kyc.case?.scheduled_for ? "kycBooked" : "kycBooking")}</Badge>}</span>
           </Row>
+          <Row icon="description" onClick={() => openSheet("documents")}>Policy documents</Row>
+          <Row icon="task_alt" onClick={() => openSheet("claim")}>Prepare a claim</Row>
+          <Row icon="calculate" onClick={() => openSheet("loan")}>Prepare a loan application</Row>
           {!pwa.isStandalone() && <Row icon="install_mobile" onClick={() => openSheet("install")}>{t("menuInstall")}</Row>}
           <Row icon="info" onClick={() => openSheet("about")}>{t("menuAbout")}</Row>
         </nav>

@@ -18,7 +18,9 @@ from auth import feedback as feedback_store
 from rag import ingest, store
 from rag.embeddings import warm_up
 from orchestrator import registry
-from routers import marketing as marketing_router, audit, auth, calculators, chat, consents, desk, feedback, files, financial, inventory, ops, platform, procedures, search, stt, usage, users, voice
+from routers import audit, auth, calculators, chat, consents, desk, feedback, files, financial, inventory, journeys
+from routers import marketing as marketing_router
+from routers import ops, platform, procedures, search, stt, usage, users, voice
 from storage import blob, files as file_store, index as doc_index
 from usage import ledger as usage_ledger
 from desk import store as desk_store
@@ -75,6 +77,8 @@ async def lifespan(app: FastAPI):
         from financial import inventory as financial_inventory
         await financial_inventory.init_schema()
         financial_providers.load_configured()
+        from journeys import store as journey_store
+        await journey_store.init_schema()
         from memory import episodic, procedural, semantic
         from marketing import store as marketing_store
         await marketing_store.init_schema()
@@ -117,6 +121,7 @@ app.include_router(financial.router)
 app.include_router(calculators.router)
 app.include_router(inventory.router)
 app.include_router(marketing_router.router)
+app.include_router(journeys.router)
 
 
 @app.exception_handler(auth_store.Unavailable)
@@ -160,7 +165,7 @@ class SPAStaticFiles(StaticFiles):
 # First path segments that belong to the API or the console: never answered with the web app's index.html.
 # Keep in sync with API_PATHS in apps/web/vite.config.ts.
 API_PREFIXES = {"auth", "users", "admin", "chat", "consents", "files", "feedback", "usage", "desk", "stt", "ws",
-                "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test", "app",
+                "audit", "drafts", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test", "app",
                 "calculators", "financial", "platform", "search", "inbox"}
 web_dist = Path(config.WEB_DIST)
 has_web = (web_dist / "index.html").is_file()

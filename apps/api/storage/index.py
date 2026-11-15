@@ -27,6 +27,8 @@ MAX_EXPANDED_DOCUMENT_BYTES = 64 * 1024 * 1024
 SCHEMA = f"""
 ALTER TABLE user_files ADD COLUMN IF NOT EXISTS index_status TEXT NOT NULL DEFAULT 'none';
 ALTER TABLE user_files ADD COLUMN IF NOT EXISTS indexed_chunks INT NOT NULL DEFAULT 0;
+ALTER TABLE user_files ADD COLUMN IF NOT EXISTS indexed_pages INT[] NOT NULL DEFAULT '{{}}';
+ALTER TABLE user_files ADD COLUMN IF NOT EXISTS total_pages INT;
 CREATE TABLE IF NOT EXISTS user_doc_chunks (
     id        BIGSERIAL PRIMARY KEY,
     user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -71,7 +73,7 @@ async def reindex_pending() -> int:
                                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                                'application/vnd.openxmlformats-officedocument.presentationml.presentation')
-                               AND f.index_status IN ('none', 'failed')""")
+                               AND f.index_status IN ('none', 'indexing', 'failed')""")
             rows = await cur.fetchall()
     done = 0
     for row in rows:
@@ -109,11 +111,16 @@ def passages(text: str, limit: int) -> List[str]:
             continue
         sentences = re.split(r"(?<=[.!?।])\s+", paragraph) if len(paragraph) > limit else [paragraph]
         for sentence in sentences:
-            sentence = sentence[:limit]
-            if pieces and len(pieces[-1]) + 1 + len(sentence) <= limit:
-                pieces[-1] += " " + sentence
-            else:
-                pieces.append(sentence)
+            while len(sentence) > limit:
+                boundary = sentence.rfind(" ", 0, limit + 1)
+                boundary = boundary if boundary > 0 else limit
+                pieces.append(sentence[:boundary])
+                sentence = sentence[boundary:].lstrip()
+            if sentence:
+                if pieces and len(pieces[-1]) + 1 + len(sentence) <= limit:
+                    pieces[-1] += " " + sentence
+                else:
+                    pieces.append(sentence)
     return pieces
 
 
@@ -240,10 +247,15 @@ async def index_file(user_id: str, file_id: str, data: bytes, content_type: str,
     """Read, mask, embed and store one file. Returns the resulting index_status. Never raises.
     What it costs (OCR pages, embeddings) is charged to the person, and nothing is read once they are over their limit."""
     from usage import ledger as usage_ledger
+    from trust import consent
+
     calls: list = []
     token = telemetry.current_meter.set(calls)
     channel = telemetry.current_channel.set("documents")
     try:
+        if not consent.is_active(f"user:{user_id}", "document_analysis"):
+            await _status(file_id, "none")
+            return "none"
         if (await usage_ledger.status(user_id))["exceeded"]:
             await _status(file_id, "over_budget")
             return "over_budget"
@@ -257,14 +269,32 @@ async def index_file(user_id: str, file_id: str, data: bytes, content_type: str,
             await _status(file_id, "empty")
             return "empty"
         vectors = await embed_passages([c["content"] for c in chunks])
+        if len(vectors) != len(chunks):
+            raise RuntimeError("Embedding response did not cover all passages.")
+        if content_type == "application/pdf":
+            from pypdf import PdfReader
+            try:
+                total_pages = await asyncio.to_thread(lambda: len(PdfReader(io.BytesIO(data)).pages))
+            except Exception:
+                total_pages = None  # the OCR service can sometimes read a file that pypdf cannot
+        else:
+            total_pages = 1
+        indexed_pages = sorted({c["page"] for c in chunks})
         async with db().connection() as conn:
             async with conn.transaction():
+                row = await (await conn.execute("SELECT id FROM user_files WHERE id = %s AND user_id = %s FOR UPDATE",
+                                                (file_id, user_id))).fetchone()
+                if not row or not consent.is_active(f"user:{user_id}", "document_analysis"):
+                    return "none"
                 await conn.execute("DELETE FROM user_doc_chunks WHERE file_id = %s", (file_id,))
                 for c, v in zip(chunks, vectors):
                     await conn.execute(
                         "INSERT INTO user_doc_chunks (user_id, file_id, clause, page, content, embedding) VALUES (%s, %s, %s, %s, %s, %s)",
                         (user_id, file_id, c["clause"], c["page"], c["content"], Vector(v)))
-        await _status(file_id, "ready", len(chunks))
+                await conn.execute(
+                    "UPDATE user_files SET index_status = 'ready', indexed_chunks = %s, indexed_pages = %s, total_pages = %s WHERE id = %s",
+                    (len(chunks), indexed_pages, total_pages, file_id),
+                )
         log.info("Read file %s (%s, %d passages).", file_id, how, len(chunks))
         return "ready"
     except Exception as e:   # a bad file, an OCR failure or a missing key must not take anything down
@@ -284,7 +314,7 @@ async def forget(user_id: str) -> int:
     """Remove everything learned from the person's documents (the files themselves stay)."""
     async with db().connection() as conn:
         cur = await conn.execute("DELETE FROM user_doc_chunks WHERE user_id = %s", (user_id,))
-        await conn.execute("UPDATE user_files SET index_status = 'none', indexed_chunks = 0 WHERE user_id = %s", (user_id,))
+        await conn.execute("UPDATE user_files SET index_status = 'none', indexed_chunks = 0, indexed_pages = '{}', total_pages = NULL WHERE user_id = %s", (user_id,))
         return cur.rowcount
 
 
@@ -294,15 +324,18 @@ async def has_documents(user_id: str) -> bool:
         return await cur.fetchone() is not None
 
 
-async def search(user_id: str, vector: List[float], k: int) -> List[dict]:
+async def search(user_id: str, vector: List[float], k: int, file_id: Optional[str] = None) -> List[dict]:
     """The person's own passages closest to `vector`, shaped like knowledge-base hits."""
     async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             """SELECT c.file_id, c.clause, c.page, c.content, f.filename, 1 - (c.embedding <=> %(v)s) AS similarity
                FROM user_doc_chunks c JOIN user_files f ON f.id = c.file_id
-               WHERE c.user_id = %(u)s ORDER BY c.embedding <=> %(v)s LIMIT %(k)s""",
-            {"v": Vector(vector), "u": user_id, "k": k})
+               WHERE c.user_id = %(u)s AND f.index_status = 'ready'
+                 AND (%(f)s::uuid IS NULL OR c.file_id = %(f)s::uuid)
+               ORDER BY c.embedding <=> %(v)s LIMIT %(k)s""",
+            {"v": Vector(vector), "u": user_id, "k": k, "f": file_id})
         rows = await cur.fetchall()
     return [{"key": f"mydoc-{str(r['file_id'])[:8]}:{r['clause']}",
              "text": f'(From your document "{r["filename"]}", page {r["page"]}) {r["content"]}',
-             "sha256": "", "similarity": float(r["similarity"]), "personal": True} for r in rows]
+             "sha256": "", "similarity": float(r["similarity"]), "personal": True,
+             "citation": {"doc": r["filename"], "file_id": str(r["file_id"]), "page": r["page"], "body": r["content"]}} for r in rows]

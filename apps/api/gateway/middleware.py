@@ -29,7 +29,7 @@ SECURITY_HEADERS = [
     (b"referrer-policy", b"no-referrer"),
     (b"cross-origin-resource-policy", b"same-site"),
 ]
-NO_STORE = ("/auth/", "/users/", "/admin/", "/chat/")  # responses that hold tokens or personal data are never cached
+NO_STORE = {"auth", "users", "admin", "chat", "files", "drafts"}
 
 
 class BodyTooLarge(Exception):
@@ -89,7 +89,7 @@ class Gateway:
                 headers = [h for h in message["headers"] if h[0] != b"x-request-id"]
                 headers.append((b"x-request-id", rid.encode()))
                 headers.extend(SECURITY_HEADERS)
-                if path.startswith(NO_STORE):
+                if path.split("/", 2)[1] in NO_STORE and not any(name == b"cache-control" for name, _ in headers):
                     headers.append((b"cache-control", b"no-store"))
                 message = {**message, "headers": headers}
             await send(message)

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { openDocument } from "./document-workflows";
 import { Sheet } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
 import { clean, cn, withRupeeSign } from "@/lib/utils";
@@ -13,9 +14,13 @@ export function CitationSheet() {
   const item = useSession((s) => s.timeline.find((i) => i.id === target?.itemId));
   const citations = item?.kind === "assistant" ? item.citations : [];
   const docs = [...new Set(citations.map((c) => clean(c.doc)))];
+  const [previewError, setPreviewError] = useState("");
   const highlighted = useRef<HTMLLIElement>(null);
   useEffect(() => {
-    if (open) setTimeout(() => highlighted.current?.scrollIntoView({ block: "nearest" }), 350);
+    setPreviewError("");
+    if (!open) return;
+    const timer = setTimeout(() => { void highlighted.current?.scrollIntoView({ block: "nearest" }); }, 350);
+    return () => clearTimeout(timer);
   }, [open, target?.citationId]);
 
   return (
@@ -31,6 +36,7 @@ export function CitationSheet() {
           <Icon name="description" size={18} /> {docs[0]}
         </p>
       )}
+      {previewError && <p role="alert" className="mt-2 text-error-ink">{previewError}</p>}
       <ol className="mt-4 flex flex-col gap-3 pb-4">
         {citations.map((c, i) => {
           const active = c.id === target?.citationId;
@@ -46,6 +52,12 @@ export function CitationSheet() {
                   {active && <> · {t("cited")}</>}
                 </span>
               </div>
+              {c.file_id && c.page && <button type="button" className="min-h-11 text-primary underline"
+                onClick={() => {
+                  setPreviewError("");
+                  void openDocument(`/files/${encodeURIComponent(c.file_id!)}?inline=true`, c.page)
+                    .catch(() => setPreviewError("Couldn’t open the file. Check that it is still in Policy documents."));
+                }}>Open PDF on page {c.page}</button>}
               {c.title && <h3 className="mt-2 text-lg font-semibold leading-6">{c.title}</h3>}
               <p dir="auto" className="mt-1.5 whitespace-pre-line text-[17px] leading-[25px] text-ink">{withRupeeSign(clean(c.body || c.text))}</p>
             </li>

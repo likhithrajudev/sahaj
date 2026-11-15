@@ -9,6 +9,7 @@ class Turn:
     kind: str = "answer"                 # answer | ask | confirm | recommendation | compare | command
     agent: str = "insurance"
     sources: Dict[str, str] = field(default_factory=dict)   # what the text may cite
+    citation_metadata: Dict[str, dict] = field(default_factory=dict)
     allow_recommendation: bool = False   # True only for text built from the recommendation engine's facts
     judge: bool = True                   # also run the model fact-check (needs sources)
     detailed: bool = False               # the fact-check need not insist every fact is on point

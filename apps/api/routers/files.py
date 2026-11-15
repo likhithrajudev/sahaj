@@ -34,7 +34,8 @@ def _public(row: dict) -> dict:
     return {"id": str(row["id"]), "filename": row["filename"], "content_type": row["content_type"],
             "size_bytes": row["size_bytes"], "sha256": row["sha256"], "created_at": row["created_at"],
             "index_status": row.get("index_status", "none"), "indexed_chunks": row.get("indexed_chunks", 0),
-            "category": row.get("category", "document")}
+            "category": row.get("category", "document"),
+            "indexed_pages": row.get("indexed_pages", []), "total_pages": row.get("total_pages")}
 
 
 def _owns_blob(user: User, row: dict) -> bool:
@@ -105,15 +106,16 @@ async def upload(file: UploadFile, user: User = Depends(current_user)):
     kind, category, ext = sniffed
     name = files.blob_name(files.folder(user), category, ext)
     await store.put(name, data, kind)
+    should_index = index_readable(kind) and consent.is_active(user.subject, "document_analysis")
     try:
-        row = await files.add(user.id, files.safe_name(file.filename), kind, data, name, category)
+        row = await files.add(user.id, files.safe_name(file.filename), kind, data, name, category,
+                              index_status="indexing" if should_index else "none")
     except Exception:
         await store.delete(name)   # no record, so no orphan blob
         raise
     FILE_EVENTS.labels("uploaded").inc()
-    if index_readable(kind) and consent.is_active(user.subject, "document_analysis"):   # read it so questions can be asked about it
+    if should_index:
         _index_in_background(user.id, str(row["id"]), data, kind, user.language)
-        row = {**row, "index_status": "indexing"}
     return _public(row)
 
 
@@ -138,14 +140,15 @@ async def set_analysis_consent(body: ConsentUpdate, request: Request, user: User
 
 
 @router.get("/{file_id}")
-async def download(file_id: str, user: User = Depends(current_user)):
+async def download(file_id: str, inline: bool = False, user: User = Depends(current_user)):
     """The file itself, to its owner only."""
     row = await files.get(user.id, file_id)
     if row is None or not _owns_blob(user, row):
         raise HTTPException(404, "No such file.")
+    disposition = "inline" if inline and row["content_type"] == "application/pdf" else "attachment"
     FILE_EVENTS.labels("downloaded").inc()
     return StreamingResponse(blob.get().stream(row["blob_name"]), media_type=row["content_type"], headers={
-        "Content-Disposition": f"attachment; filename=\"{row['filename']}\"; filename*=UTF-8''{quote(row['filename'])}",
+        "Content-Disposition": f"{disposition}; filename=\"{row['filename']}\"; filename*=UTF-8''{quote(row['filename'])}",
         "Content-Length": str(row["size_bytes"]), "Cache-Control": "private, no-store"})
 
 

@@ -40,6 +40,14 @@ export function Welcome() {
         </h1>
         <p className="mt-3 max-w-[56ch] text-[17px] leading-[26px] text-ink-2">{t("greetingSub")}</p>
       </motion.div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="md" variant="soft" onClick={() => openSheet("claim")}>
+          <Icon name="task_alt" size={19} /> Prepare a claim
+        </Button>
+        <Button size="md" variant="neutral" onClick={() => openSheet("documents")}>
+          <Icon name="description" size={19} /> Policy documents
+        </Button>
+      </div>
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-ink-2">
           <Icon name="record_voice_over" size={20} className="text-primary" /> {t("trySaying")}

@@ -7,6 +7,7 @@ import { Timeline } from "@/components/conversation/timeline";
 import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { Header } from "@/components/layout/header";
 import { Splash } from "@/components/layout/splash";
+import { DocumentScopeBar, JourneySheet, PolicyDocumentsSheet } from "@/components/sheets/document-workflows";
 import { CitationSheet } from "@/components/sheets/citation-sheet";
 import { previewScene, seedPreview } from "@/dev/preview";
 import { ConsentSheet } from "@/components/sheets/consent-sheet";
@@ -64,6 +65,7 @@ function Conversation() {
     <div className="flex h-full flex-col bg-bg" style={{ backgroundImage: "var(--wash)" }}>
       <Header />
       <ConnectionBanner />
+      <DocumentScopeBar />
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <Timeline />
@@ -73,6 +75,9 @@ function Conversation() {
       </div>
       <ConsentSheet />
       <CitationSheet />
+      <PolicyDocumentsSheet />
+      <JourneySheet kind="claim" />
+      <JourneySheet kind="loan" />
       <MicSheet />
       <MenuSheet />
       <InstallSheet />

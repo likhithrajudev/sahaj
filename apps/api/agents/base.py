@@ -23,8 +23,9 @@ RECOMMEND = (
     "neutrally and leave the decision to the user. Never tell the user they must buy or act."
 )
 
-BRIEF = ("Answer the question in one to three short sentences, then stop. Do not list unrelated clauses. If a clause given sets "
-         "a limit, charge, exclusion or waiting period that changes the answer, include it.")
+BRIEF = ("Answer the question in two to five short sentences, most important first, then stop. Cover every clause given "
+         "that answers it, including any condition, and any limit, charge, exclusion or waiting period that changes the answer. "
+         "Do not mention clauses that do not bear on the question.")
 DEEP = (
     "The user wants more detail. Explain in up to six sentences, staying close to the clause wording "
     "and including the conditions, exclusions, limits, charges or waiting periods of the clauses that answer the question."

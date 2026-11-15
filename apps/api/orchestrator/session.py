@@ -544,7 +544,10 @@ class Session:
             "suggestions": suggest.for_intent(self.last_intent, lang, turn.kind,
                                               bool(turn.handoff_after or self.failures >= MAX_FAILURES),
                                               asked=[m["content"] for m in self.history if m.get("role") == "user"][-6:] + [text or ""],
-                                              shown=self.last_suggestions),
+                                              shown=self.last_suggestions,
+                                              related=suggest.from_clauses(
+                                                  [citations.describe(k, v)["title"] for k, v in turn.sources.items()
+                                                   if k not in set(guardrails.CITE.findall(shown))], lang)),
         }
         self.last_suggestions = reply["suggestions"]
         if turn.progress:

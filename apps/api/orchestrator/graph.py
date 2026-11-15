@@ -9,10 +9,11 @@ The graph only decides and produces a `Turn`. Sending it, speaking it and keepin
 which is passed in through the config. There is deliberately no checkpointer: a checkpoint would persist what the
 person told us, and nothing personal may be stored.
 """
+import asyncio
 import functools
+import operator
 import time
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
-import operator
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -241,7 +242,14 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
     # Search with the classifier's English rendering of the question: the clauses are English, and cross-language
     # similarity is weak (a Hindi question scored 0.1-0.2 against the right English clause, 0.6-0.7 once in English).
     query = (state["intent"].search or "").strip() or text
-    hits = await retrieve(domain, query, session.history, deep, scope, user_id=await _document_user(session))
+    hits, catches = await asyncio.gather(
+        retrieve(domain, query, session.history, deep, scope, user_id=await _document_user(session)),
+        retrieve(domain, query, [], False, [FINE_PRINT_DOC]) if config.PROACTIVE_FINE_PRINT else _none())
+    # One catch the person did not ask about, from the fine-print guide: offered, cited and fact-checked like the rest.
+    watch = next((c for c in catches if c["key"] not in {h["key"] for h in hits}
+                  and c["similarity"] >= config.WATCH_OUT_MIN_SIMILARITY), None) if hits else None
+    if watch:
+        hits = hits + [watch]
     sources = {h["key"]: h["text"] for h in hits}
     trace.add("retrieval", scoped_to=scope, clauses=[
         {"key": h["key"], "similarity": round(h["similarity"], 4), "sha256": h["sha256"]} for h in hits])
@@ -268,10 +276,21 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
             return Turn(text=cached["text"], kind="answer", agent=agent, sources=cached["sources"], prechecked=True,
                         from_cache=True)
 
-    reply = await generate(AGENTS[agent].role, sources, text, previous, language, DEEP if deep else BRIEF,
-                           memory=session.memory)
+    depth = DEEP if deep else BRIEF
+    if watch:
+        depth += (f"\nIf clause [{watch['key']}] adds a cost, limit or catch that matters for this question and your "
+                  f"answer has not covered it, end with one sentence that begins with the {language} for 'Watch out:' "
+                  f"and states it, followed by [{watch['key']}]. Otherwise leave that clause out.")
+    reply = await generate(AGENTS[agent].role, sources, text, previous, language, depth, memory=session.memory)
     return Turn(text=session.vault.mask(reply), kind="answer", agent=agent, sources=sources, judge=bool(sources),
                 detailed=deep, asked=text, cache_key=key, citation_metadata=metadata(hits))
+
+
+FINE_PRINT_DOC = "concepts-fine-print"
+
+
+async def _none():
+    return []
 
 
 @node

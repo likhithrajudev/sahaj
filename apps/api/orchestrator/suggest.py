@@ -55,8 +55,24 @@ def _already(chip: str, asked: List[str]) -> bool:
     return bool(words) and any(len(words & _gist(q)) / len(words) >= 0.5 for q in asked)
 
 
+GENERIC = {"definitions", "general", "introduction", "summary", "overview", "scope", "about this document", "contact"}
+
+
+def from_clauses(titles: Sequence[Optional[str]], lang: str) -> List[str]:
+    """'What about <title>?' for clauses that were found for this question but not used in the answer: each leads
+    to something the knowledge base can answer. English titles only, so other languages keep the written lists."""
+    if not lang.startswith("en"):
+        return []
+    chips = []
+    for title in titles:
+        t = (title or "").strip().rstrip(".:")
+        if 3 <= len(t) <= 48 and t.lower() not in GENERIC:
+            chips.append(f"What about {t[0].lower() + t[1:]}?")
+    return chips
+
+
 def for_intent(intent: Optional[str], lang: str, kind: str, handed_off: bool,
-               asked: Sequence[str] = (), shown: Sequence[str] = ()) -> List[str]:
+               asked: Sequence[str] = (), shown: Sequence[str] = (), related: Sequence[str] = ()) -> List[str]:
     """Up to three tappable follow-ups, skipping what the person already asked and what the last reply offered,
     topped up from the same domain only (fewer chips beat off-topic ones). None while the assistant is itself asking a question, and none once a person
     has taken over."""
@@ -68,6 +84,9 @@ def for_intent(intent: Optional[str], lang: str, kind: str, handed_off: bool,
     if name == DEFAULT:
         order += [k for k in SUGGESTIONS if k != DEFAULT]
     picked: List[str] = []
+    for chip in list(related)[:2]:
+        if chip not in picked and chip not in shown and not _already(chip, list(asked)):
+            picked.append(chip)
     for key in order:
         for chip in SUGGESTIONS[key].get(lang) or SUGGESTIONS[key]["en-IN"]:
             if chip not in picked and chip not in shown and not _already(chip, list(asked)):

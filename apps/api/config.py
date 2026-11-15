@@ -25,8 +25,10 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 OPENAI_EMBED_PRICE_PER_M = float(os.getenv("OPENAI_EMBED_PRICE_PER_M", "0.02"))   # USD per million tokens (estimate)
 # Load knowledge/ into the database when the API starts (only new or changed clauses are embedded). Turn off to ingest by hand.
 AUTO_INGEST = os.getenv("AUTO_INGEST", "true").lower() in ("1", "true", "yes")
-RETRIEVAL_TOP_K = 4
+RETRIEVAL_TOP_K = 6
 RETRIEVAL_TOP_K_DEEP = 8
+PROACTIVE_FINE_PRINT = os.getenv("PROACTIVE_FINE_PRINT", "true").lower() == "true"
+WATCH_OUT_MIN_SIMILARITY = float(os.getenv("WATCH_OUT_MIN_SIMILARITY", "0.35"))
 # Cosine similarity below which a clause is not used. It only removes clearly unrelated text; "related but not
 # answerable" is caught by the answer checks. Re-measure with tests/eval_retrieval.py whenever the model or documents change.
 RETRIEVAL_MIN_SIMILARITY = float(os.getenv("RETRIEVAL_MIN_SIMILARITY", "0.30"))

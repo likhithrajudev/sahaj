@@ -13,9 +13,9 @@ import { useSession, type ConsentInfo } from "@/store/session";
 import { closeSheet, openSheet, useUi, type Theme } from "@/store/ui";
 
 /** Languages as the backend supports them (services/tts.py). */
-const LANGUAGES: { mode: StringKey; tone: "success" | "sample" | "info"; names: string }[] = [
+const LANGUAGES: { mode: StringKey; tone: "success" | "warm" | "info"; names: string }[] = [
   { mode: "fullVoice", tone: "success", names: "English, Hindi, Hinglish, Bengali, Tamil, Telugu, Kannada, Marathi, Gujarati, Punjabi, Malayalam, Odia" },
-  { mode: "approxVoice", tone: "sample", names: "Nepali, Maithili, Dogri, Konkani, Sanskrit, Bodo, Assamese" },
+  { mode: "approxVoice", tone: "warm", names: "Nepali, Maithili, Dogri, Konkani, Sanskrit, Bodo, Assamese" },
   { mode: "textOnlyMode", tone: "info", names: "Urdu, Kashmiri, Sindhi, Santali, Manipuri" },
 ];
 
@@ -62,7 +62,6 @@ export function MenuSheet() {
         </Section>
 
         <nav className="flex flex-col border-t border-line">
-          <Row icon="science" iconClass="text-sample-ink" onClick={() => openSheet("sample")}>{t("menuSample")}</Row>
           {!pwa.isStandalone() && <Row icon="install_mobile" onClick={() => openSheet("install")}>{t("menuInstall")}</Row>}
           <Row icon="info" onClick={() => openSheet("about")}>{t("menuAbout")}</Row>
         </nav>

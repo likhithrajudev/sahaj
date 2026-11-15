@@ -17,9 +17,6 @@ export function Welcome() {
   const t = useT();
   return (
     <div className="flex flex-col gap-4 pb-2">
-      <p className="flex items-center gap-2.5 rounded-[14px] bg-sample-soft px-4 py-3 text-[15px] leading-[21px] text-sample-ink">
-        <Icon name="science" size={20} /> {t("sampleShort")}
-      </p>
       <div>
         <h1 className="text-[26px] font-semibold leading-[34px]">{t("greeting")}</h1>
         <p className="mt-2 text-[17px] leading-[25px] text-ink-2">{t("greetingSub")}</p>

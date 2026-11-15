@@ -52,16 +52,15 @@ export function InstallSheet() {
 
 export function AboutSheet() {
   const t = useT();
-  const sheet = useUi((s) => s.sheet);
-  const about = sheet === "about";
+  const open = useUi((s) => s.sheet === "about");
   return (
-    <Sheet open={about || sheet === "sample"} onClose={closeSheet} label={about ? t("menuAbout") : t("menuSample")}>
+    <Sheet open={open} onClose={closeSheet} label={t("menuAbout")}>
       <div className="flex flex-col gap-4 pb-4">
         <div className="flex items-center gap-3">
-          {about ? <LogoMark size={44} /> : <span className="flex size-11 items-center justify-center rounded-xl bg-sample-soft text-sample-ink"><Icon name="science" /></span>}
-          <h2 className="text-[22px] font-semibold">{about ? "Sahaj" : t("menuSample")}</h2>
+          <LogoMark size={44} />
+          <h2 className="text-[22px] font-semibold">Sahaj</h2>
         </div>
-        <p className="text-[17px] leading-[25px] text-ink-2">{about ? t("aboutBody") : t("sampleBanner")}</p>
+        <p className="text-[17px] leading-[25px] text-ink-2">{t("aboutBody")}</p>
         <Button variant="neutral" onClick={closeSheet}>{t("gotIt")}</Button>
       </div>
     </Sheet>

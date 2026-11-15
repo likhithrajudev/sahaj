@@ -1,7 +1,7 @@
 import type { Card } from "@sahaj/contracts";
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/lib/i18n";
-import { rupees, splitSample } from "@/lib/utils";
+import { clean, rupees } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 import { ProfileSummary, Recommendation } from "./advice";
 import { ComparisonCard } from "./comparison";
@@ -42,11 +42,11 @@ function summarise(card: Card, t: ReturnType<typeof useT>): { icon: string; titl
       return {
         icon: "health_and_safety",
         title: `${t("planSuggestions")} · ${t("cover").toLowerCase()} ${rupees(card.suggested_cover.amount)}`,
-        sub: top ? `${splitSample(top.name).name} · ${rupees(top.annual_premium)} ${t("perYear")}` : t("noPlansTitle"),
+        sub: top ? `${clean(top.name)} · ${rupees(top.annual_premium)} ${t("perYear")}` : t("noPlansTitle"),
       };
     }
     case "comparison":
-      return { icon: "compare_arrows", title: t("compareTitle", { n: card.plans.length }), sub: card.plans.map((p) => splitSample(p.name).name).join(" · ") };
+      return { icon: "compare_arrows", title: t("compareTitle", { n: card.plans.length }), sub: card.plans.map((p) => clean(p.name)).join(" · ") };
     case "profile_summary":
       return { icon: "person_check", title: t("understood"), sub: card.details.slice(0, 3).join(" · ") };
     case "loan_calculation":

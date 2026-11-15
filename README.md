@@ -38,8 +38,7 @@ pnpm dev:web        # http://localhost:5173  -> sign in with "Developer sign-in"
 Other modes:
 
 ```bash
-pnpm dev:mock       # the UI against a scripted mock backend: no keys, no Postgres
-pnpm demo:tunnel    # HTTPS link for a phone (the mic needs HTTPS)
+pnpm tunnel         # HTTPS link for a phone (the mic needs HTTPS)
 pnpm test:api       # backend tests (run from apps/api so .env.local applies)
 pnpm typecheck
 ```
@@ -47,7 +46,7 @@ pnpm typecheck
 Over a tunnel, the dev login is reachable by anyone with the link (the API sees the request coming from Vite on
 this machine). Use a Google client id instead when sharing the link outside the team.
 
-- iPhone demo checklist: [`apps/web/README.md`](apps/web/README.md#demo-on-an-iphone)
+- Testing on an iPhone: [`apps/web/README.md`](apps/web/README.md#testing-on-an-iphone)
 - Deploying to Azure or AWS (single container): [`docs/deployment.md`](docs/deployment.md)
 
 When the API protocol changes, update `docs/voice-api.md` and `packages/contracts` together.

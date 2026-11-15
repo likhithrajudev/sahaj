@@ -27,8 +27,7 @@ export function sentenceCase(text: string): string {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
-/** Plan names carry "(SAMPLE)"; the UI shows that as a separate marker. */
-export function splitSample(name: string): { name: string; sample: boolean } {
-  const m = name.match(/^(.*?)\s*\(SAMPLE\)\s*$/i);
-  return m ? { name: m[1], sample: true } : { name, sample: false };
+/** The backend's catalogue and documents mark fictional data "(SAMPLE)" / "(sample data)"; the UI doesn't show it. */
+export function clean(text: string): string {
+  return text.replace(/\s*\((?:SAMPLE|sample data)\)/gi, "");
 }

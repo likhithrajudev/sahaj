@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Icon } from "./icon";
 
 const TONES = {
-  sample: "bg-sample-soft text-sample-ink",
+  warm: "bg-warm-soft text-warm-ink",
   neutral: "bg-surface-2 text-ink-2",
   info: "bg-info-soft text-info",
   success: "bg-success-soft text-success",

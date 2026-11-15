@@ -11,7 +11,7 @@ from advisory import catalogue
 FIXED_DOCS = {
     "concepts-insurance-basics": "Insurance basics",
     "concepts-loan-basics": "Loan basics",
-    "sample-kfs": "Loan Key Facts Statement (SAMPLE)",
+    "sample-kfs": "Loan Key Facts Statement",
     "calc": "Loan calculation",
     "rec": "Recommendation engine",
     "profile": "Your details",

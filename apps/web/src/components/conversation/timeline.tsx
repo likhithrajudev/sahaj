@@ -6,7 +6,7 @@ import { InstallCard } from "@/components/sheets/info-sheets";
 import { Icon } from "@/components/ui/icon";
 import { useIsDesktop } from "@/lib/media";
 import { useT } from "@/lib/i18n";
-import { cn, withRupeeSign } from "@/lib/utils";
+import { clean, cn, withRupeeSign } from "@/lib/utils";
 import { useSession, type TimelineItem } from "@/store/session";
 import { RichText } from "./rich-text";
 import {
@@ -84,7 +84,7 @@ function Item({ item, isLatest }: { item: TimelineItem; isLatest: boolean }) {
     case "assistant":
       return (
         <AssistantBubble item={item} isLatest={isLatest}>
-          <RichText text={withRupeeSign(item.text)} citations={item.citations} onCite={(id) => openCitation(item.id, id)} />
+          <RichText text={withRupeeSign(clean(item.text))} citations={item.citations} onCite={(id) => openCitation(item.id, id)} />
         </AssistantBubble>
       );
     case "card":

@@ -11,7 +11,6 @@ const S = {
   reconnectingShort: ["Reconnecting…", "फिर से जुड़ रहे हैं…"],
   offline: ["Offline", "ऑफ़लाइन"],
   withPerson: ["With a person", "एक व्यक्ति से जुड़े"],
-  sample: ["Sample data", "नमूना डेटा"],
   menu: ["Menu", "मेन्यू"],
   needsProgress: ["Understanding your needs", "आपकी ज़रूरतें समझ रहे हैं"],
   of: ["of", "/"],
@@ -25,11 +24,6 @@ const S = {
     "बटन दबाकर अपनी भाषा में बोलिए। मैं सिर्फ़ मंज़ूर दस्तावेज़ों से जवाब देता हूँ और हर बात का स्रोत दिखाता हूँ।",
   ],
   trySaying: ["Try saying", "ऐसे बोलकर देखें"],
-  sampleShort: ["All plans here are sample data, not real products.", "सभी प्लान नमूना डेटा हैं, असली नहीं।"],
-  sampleBanner: [
-    "Every plan here is sample data for a demo. None of them are real products.",
-    "यहाँ सभी प्लान डेमो के लिए नमूना डेटा हैं। इनमें से कोई असली प्रोडक्ट नहीं है।",
-  ],
 
   // consent
   consentTitle: ["Before we start", "शुरू करने से पहले"],
@@ -257,7 +251,6 @@ const S = {
   themeSystem: ["System", "सिस्टम"],
   themeLight: ["Light", "लाइट"],
   themeDark: ["Dark", "डार्क"],
-  menuSample: ["About the sample data", "नमूना डेटा के बारे में"],
   menuInstall: ["Install app", "ऐप इंस्टॉल करें"],
   menuAbout: ["About Sahaj", "Sahaj के बारे में"],
   aboutBody: [

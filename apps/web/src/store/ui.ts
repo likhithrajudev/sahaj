@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type { UiLang } from "@/lib/i18n";
 
 export type Theme = "system" | "light" | "dark";
-export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about" | "sample";
+export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about";
 
 interface UiState {
   lang: UiLang;

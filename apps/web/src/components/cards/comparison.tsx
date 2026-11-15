@@ -2,7 +2,7 @@ import type { ComparisonCard as Comparison } from "@sahaj/contracts";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import { useT, type StringKey } from "@/lib/i18n";
-import { cn, sentenceCase, splitSample, withRupeeSign } from "@/lib/utils";
+import { clean, cn, sentenceCase, withRupeeSign } from "@/lib/utils";
 import { CardShell } from "./shell";
 
 const TITLE: Record<Comparison["goal"], StringKey> = {
@@ -13,13 +13,13 @@ const TITLE: Record<Comparison["goal"], StringKey> = {
 export function ComparisonCard({ card }: { card: Comparison }) {
   const t = useT();
   const [view, setView] = useState<"table" | "list">("table");
-  const plans = card.plans.map((p) => ({ ...p, ...splitSample(p.name) }));
+  const plans = card.plans.map((p) => ({ ...p, name: clean(p.name) }));
   const labels = plans[0]?.rows.map(([label]) => label) ?? [];
-  const value = (planIdx: number, rowIdx: number) => withRupeeSign(sentenceCase(plans[planIdx].rows[rowIdx]?.[1] ?? "—"));
+  const value = (planIdx: number, rowIdx: number) => withRupeeSign(sentenceCase(clean(plans[planIdx].rows[rowIdx]?.[1] ?? "—")));
   const initials = plans.map((p) => p.name[0]?.toUpperCase() ?? "?");
 
   return (
-    <CardShell icon="compare_arrows" title={t(TITLE[card.goal] ?? "compareTitle", { n: plans.length })} sample={card.sample_data} flush>
+    <CardShell icon="compare_arrows" title={t(TITLE[card.goal] ?? "compareTitle", { n: plans.length })} flush>
       <div className="flex gap-1 px-[18px] pb-2" role="tablist">
         {(["table", "list"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
@@ -38,7 +38,6 @@ export function ComparisonCard({ card }: { card: Comparison }) {
                 {plans.map((p) => (
                   <th key={p.id} className="w-[150px] border-b border-line px-3 py-2.5 text-left align-top">
                     <span className="block text-[17px] font-semibold leading-[22px]">{p.name}</span>
-                    {p.sample && <span className="text-[11px] font-semibold tracking-[.06em] text-sample-ink">SAMPLE</span>}
                   </th>
                 ))}
               </tr>

@@ -5,13 +5,12 @@
   "scripts": {
     "dev:api": "pnpm --filter @sahaj/api dev",
     "dev:web": "pnpm --filter @sahaj/web dev",
-    "dev:mock": "pnpm --filter @sahaj/web dev:mock",
-    "demo:tunnel": "ngrok http 5173",
     "test:api": "pnpm --filter @sahaj/api test",
     "db:up": "docker compose up -d db",
     "typecheck": "pnpm -r --if-present typecheck",
     "build": "pnpm -r --if-present build",
-    "docker:build": "docker build -t sahaj ."
+    "docker:build": "docker build -t sahaj .",
+    "tunnel": "ngrok http 5173"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

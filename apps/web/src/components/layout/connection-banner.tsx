@@ -10,7 +10,7 @@ export function ConnectionBanner() {
   const hasSession = useSession((s) => s.sessionId !== null || s.timeline.length > 0);
   if (connection === "reconnecting" || (connection === "connecting" && hasSession)) {
     return (
-      <div role="status" className="mx-4 mt-1 flex items-start gap-3 rounded-[14px] bg-warn-soft px-4 py-3 text-[15px] leading-[21px] text-sample-ink lg:mx-auto lg:w-full lg:max-w-[720px]">
+      <div role="status" className="mx-4 mt-1 flex items-start gap-3 rounded-[14px] bg-warn-soft px-4 py-3 text-[15px] leading-[21px] text-warm-ink lg:mx-auto lg:w-full lg:max-w-[720px]">
         <Icon name="sync" size={20} className="mt-px animate-spin [animation-duration:2.4s]" />
         {t("reconnectingBanner")}
       </div>

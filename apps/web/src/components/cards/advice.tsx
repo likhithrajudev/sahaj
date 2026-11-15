@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { isStringKey, useT, type StringKey, type UiLang } from "@/lib/i18n";
 import { answerConsent, cancelHandoff } from "@/lib/session";
-import { cn, rupees, rupeesWords, sentenceCase, splitSample, withRupeeSign } from "@/lib/utils";
+import { clean, cn, rupees, rupeesWords, sentenceCase, withRupeeSign } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 
 export function ProfileSummary({ card }: { card: ProfileSummaryCard }) {
@@ -19,7 +19,7 @@ export function ProfileSummary({ card }: { card: ProfileSummaryCard }) {
       <ul className="mt-2">
         {card.details.map((d) => (
           <li key={d} dir="auto" className="border-b border-line py-2.5 text-[17px] leading-6 last:border-b-0">
-            {withRupeeSign(sentenceCase(d))}
+            {withRupeeSign(sentenceCase(clean(d)))}
           </li>
         ))}
       </ul>
@@ -65,7 +65,6 @@ export function Recommendation({ card }: { card: RecommendationCard }) {
         <div className="flex flex-wrap items-center gap-2">
           <Icon name="health_and_safety" size={20} className="text-primary" />
           <h3 className="flex-1 text-[15px] font-semibold">{t("planSuggestions")}</h3>
-          {card.sample_data && <Badge tone="sample" icon="science">{t("sample")}</Badge>}
           {card.indicative_premiums && <Badge>{t("indicativePremiums")}</Badge>}
         </div>
 
@@ -115,7 +114,7 @@ export function Recommendation({ card }: { card: RecommendationCard }) {
         <ol className="flex flex-col gap-2">
           {card.disclosures.map((d, i) => (
             <li key={d} className="grid grid-cols-[20px_1fr] gap-1.5 text-[15px] leading-[21px]">
-              <span className="font-semibold text-ink-3">{i + 1}</span><span>{d}</span>
+              <span className="font-semibold text-ink-3">{i + 1}</span><span>{clean(d)}</span>
             </li>
           ))}
         </ol>
@@ -127,8 +126,8 @@ export function Recommendation({ card }: { card: RecommendationCard }) {
 function PlanRow({ plan, open, onToggle }: { plan: RecommendedPlan; open: boolean; onToggle: () => void }) {
   const t = useT();
   const lang = useUi((s) => s.lang);
-  const { name, sample } = splitSample(plan.name);
-  const insurer = splitSample(plan.insurer).name;
+  const name = clean(plan.name);
+  const insurer = clean(plan.insurer);
   const scores = Object.entries(plan.criteria);
   return (
     <div className="flex flex-col gap-3 border-t border-line px-[18px] py-4">
@@ -138,7 +137,7 @@ function PlanRow({ plan, open, onToggle }: { plan: RecommendedPlan; open: boolea
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="text-lg font-semibold leading-[22px]">
-            {name} {sample && <span className="text-xs font-semibold tracking-[.04em] text-sample-ink">(SAMPLE)</span>}
+            {name}
           </div>
           <div className="text-sm text-ink-2">{insurer}</div>
           <div className={cn("mt-1 flex items-center gap-1 text-[13px] font-semibold", plan.meets_suggested_cover ? "text-success" : "text-warn")}>
@@ -163,7 +162,7 @@ function PlanRow({ plan, open, onToggle }: { plan: RecommendedPlan; open: boolea
             <ul className="flex flex-col gap-1.5">
               {plan.highlights.map((h) => (
                 <li key={h} className="flex gap-2 text-[15px] leading-[21px]">
-                  <Icon name="check" size={18} className="text-primary" />{withRupeeSign(sentenceCase(h))}
+                  <Icon name="check" size={18} className="text-primary" />{withRupeeSign(sentenceCase(clean(h)))}
                 </li>
               ))}
             </ul>
@@ -171,7 +170,7 @@ function PlanRow({ plan, open, onToggle }: { plan: RecommendedPlan; open: boolea
           {plan.reasons.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-semibold">{t("whyRanks")}</span>
-              <span className="text-[15px] leading-[22px] text-ink-2">{sentenceCase(plan.reasons.join("; "))}.</span>
+              <span className="text-[15px] leading-[22px] text-ink-2">{clean(sentenceCase(plan.reasons.join("; ")))}.</span>
             </div>
           )}
           {scores.length > 0 && (
@@ -268,7 +267,7 @@ export function HandoffCard({ reference, reason, agentName }: { reference: strin
         </button>
       </div>
       <p className={cn("flex items-center gap-2 rounded-xl px-3 py-2.5 text-[15px] font-semibold",
-        agentName ? "bg-success-soft text-success" : "bg-warn-soft text-sample-ink")} role="status">
+        agentName ? "bg-success-soft text-success" : "bg-warn-soft text-warm-ink")} role="status">
         <Icon name={agentName ? "support_agent" : "timer"} size={20} />
         {agentName ? t("withAgent", { name: agentName }) : t("waitingForPerson")}
       </p>

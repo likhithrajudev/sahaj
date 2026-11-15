@@ -17,7 +17,7 @@ export function MicSheet() {
   return (
     <Sheet open={open} onClose={closeSheet} label={explainer ? t("micTitle") : t("blockedTitle")}>
       <div className="flex flex-col items-center gap-3 pb-2 text-center">
-        <span className={`mt-2 flex size-[88px] items-center justify-center rounded-full ${explainer ? "bg-sample-soft" : "bg-error-soft"}`}>
+        <span className={`mt-2 flex size-[88px] items-center justify-center rounded-full ${explainer ? "bg-warm-soft" : "bg-error-soft"}`}>
           <span className={`flex size-16 items-center justify-center rounded-full ${explainer ? "bg-talk text-white" : "bg-error text-white"}`}>
             <Icon name={explainer ? "mic" : "mic_off"} size={30} fill />
           </span>

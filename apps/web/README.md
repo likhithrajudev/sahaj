@@ -16,7 +16,6 @@ lives in `docs/design/<export>/` and is git-ignored; open its `Sahaj Design v2.d
 | `src/store/session.ts`, `src/store/ui.ts` | Zustand: conversation state; UI preferences (persisted) and open sheets |
 | `src/lib/socket.ts` | `/ws/voice` client: same origin, `wss://` on https, reconnect with backoff |
 | `src/lib/audio/` | Recorder (WebM or iPhone MP4, level meter, 30 s limit) and iPhone-safe playback |
-| `mock/server.mjs` | Mock backend speaking the real protocol, scripted through every design state |
 | `scripts/icons.sh` | Rebuilds the self-hosted Material Symbols subset when you use a new icon |
 | `src/components/brand/logo.tsx`, `public/` | Logo ("voice bars", docs/design/logo-1c): exact design geometry, colours mapped to `--brand-*` tokens. Icons and `favicon.svg` are rendered from it |
 
@@ -27,28 +26,25 @@ TanStack Query is only for REST calls. Below 1024 px the layout is the phone des
 ## Run
 
 ```bash
-pnpm dev:mock        # mock backend + Vite: no Sarvam / Postgres / model needed. Each recording
-                     # advances a scripted demo: EMI, citations, comparison, prepayment, clarify,
-                     # fallback, text-only (Urdu), needs analysis → recommendation
-pnpm dev:web         # Vite only; proxies /ws, /stt and /health to the real API on :8000 (pnpm dev:api)
+pnpm dev:web         # Vite; proxies every API route to the API on :8000 (pnpm dev:api)
 pnpm --filter @sahaj/web build && pnpm --filter @sahaj/web preview   # production build with service worker, :4173
 ```
 
-## Demo on an iPhone
+## Testing on an iPhone
 
 The microphone only works on **HTTPS** (or localhost), so a phone on `http://192.168.x.x:5173` cannot record. Use a tunnel:
 
 ```bash
-pnpm dev:mock            # or: pnpm dev:api + pnpm dev:web
-pnpm demo:tunnel         # ngrok http 5173 → open the https://….ngrok-free.app URL on the iPhone
+pnpm dev:api && pnpm dev:web
+pnpm tunnel              # ngrok http 5173 → open the https://….ngrok-free.app URL on the iPhone
 ```
 
-Before the demo:
+Before testing on a phone:
 - **Use the deployed URL if you can** (see `docs/deployment.md`). It's the most reliable option and the PWA installs cleanly.
 - **Install it:** Safari → Share → *Add to Home Screen*, then open it from the icon (full screen, no browser bar).
 - **Allow the mic once.** iOS may ask again on each cold launch of a home-screen app. That's an iOS behaviour, not a bug.
 - **Turn the volume up.** Replies play through the speaker even when the silent switch is on.
-- **Use one tunnel URL for the whole demo.** Changing the URL means installing again.
+- **Use one tunnel URL per session.** Changing the URL means installing again.
 
 How the iPhone problems are handled:
 - **Recording format.** Safari records MP4/AAC. The backend detects the container from the bytes (`apps/api/services/audio.py`).
@@ -60,6 +56,5 @@ How the iPhone problems are handled:
 
 ## PWA
 
-`vite-plugin-pwa` generates the manifest, the service worker and the icons. Icons come from `public/icon.svg`, a
-placeholder until the logo arrives. The service worker caches the app shell and fonts, and never caches `/ws`,
+`vite-plugin-pwa` generates the manifest and the service worker. The icons in `public/` are rendered from the logo. The service worker caches the app shell and fonts, and never caches `/ws`,
 `/stt`, `/health`, `/audit` or `/docs`.

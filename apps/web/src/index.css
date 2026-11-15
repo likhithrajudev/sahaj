@@ -36,8 +36,8 @@
   --talk-glow: color-mix(in srgb, var(--talk) 42%, transparent);
   --accent: var(--brand-cyan);
   --mark: var(--brand-action);
-  --sample-soft: #fff1d6;
-  --sample-ink: #7a4a00;
+  --warm-soft: #fff1d6;
+  --warm-ink: #7a4a00;
   --loan: #0f766e;
   --loan-soft: #dff3f0;
   --success: #127a4b;
@@ -83,8 +83,8 @@
   --talk-ring: color-mix(in srgb, #1576db 24%, transparent);
   --talk-glow: color-mix(in srgb, #1576db 42%, transparent);
   --mark: var(--brand-navy);
-  --sample-soft: #3a2e14;
-  --sample-ink: #f2c979;
+  --warm-soft: #3a2e14;
+  --warm-ink: #f2c979;
   --loan: #5fd4c4;
   --loan-soft: #10302d;
   --success: #7cd3a3;
@@ -130,8 +130,8 @@
   --color-talk-ring: var(--talk-ring);
   --color-accent: var(--accent);
   --color-mark: var(--mark);
-  --color-sample-soft: var(--sample-soft);
-  --color-sample-ink: var(--sample-ink);
+  --color-warm-soft: var(--warm-soft);
+  --color-warm-ink: var(--warm-ink);
   --color-loan: var(--loan);
   --color-loan-soft: var(--loan-soft);
   --color-success: var(--success);

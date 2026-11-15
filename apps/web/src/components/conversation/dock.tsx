@@ -235,7 +235,7 @@ function DockStrip({ state, dockError }: { state: DockState; dockError: StringKe
   if (state === "recording") return <RecordingStrip />;
   if (state === "budget" && resets) {
     return (
-      <div role="alert" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-warn-soft px-3 py-2 text-[15px] font-medium text-sample-ink">
+      <div role="alert" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-warn-soft px-3 py-2 text-[15px] font-medium text-warm-ink">
         <Icon name="info" size={20} />
         <span>{t("budgetExceeded")} {t("budgetResets", { date: new Date(resets).toLocaleDateString(undefined, { day: "numeric", month: "long" }) })}</span>
       </div>

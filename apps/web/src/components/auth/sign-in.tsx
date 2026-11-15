@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { LogoLockup } from "@/components/brand/logo";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { getAuthConfig, signInDev, signInWithGoogle } from "@/lib/auth";
@@ -83,9 +82,6 @@ export function SignIn({ ended }: { ended?: boolean }) {
           )}
         </section>
 
-        <p className="flex items-center justify-center gap-2 text-center text-sm text-ink-3">
-          <Badge tone="sample" icon="science">{t("sample")}</Badge> {t("sampleShort")}
-        </p>
       </div>
     </div>
   );
@@ -126,7 +122,7 @@ function GoogleButton({ clientId, disabled, onCredential, onError }: {
 
 function DevLogin({ busy, onSubmit }: { busy: boolean; onSubmit: (email: string, name: string) => void }) {
   const t = useT();
-  const [email, setEmail] = useState("demo@sahaj.local");
+  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -135,13 +131,13 @@ function DevLogin({ busy, onSubmit }: { busy: boolean; onSubmit: (email: string,
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl border border-dashed border-line-2 p-4">
       <div className="flex items-center gap-2">
-        <Icon name="science" size={18} className="text-sample-ink" />
+        <Icon name="science" size={18} className="text-warm-ink" />
         <span className="text-[15px] font-semibold">{t("devLoginTitle")}</span>
       </div>
       <p className="text-[13px] leading-[18px] text-ink-3">{t("devLoginNote")}</p>
       <label className="flex flex-col gap-1 text-sm font-medium text-ink-2">
         {t("email")}
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email"
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com"
           className="h-12 rounded-xl border border-line-2 bg-surface px-3.5 text-[17px] text-ink outline-none focus:border-primary" />
       </label>
       <label className="flex flex-col gap-1 text-sm font-medium text-ink-2">

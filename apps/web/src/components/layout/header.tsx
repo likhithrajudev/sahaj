@@ -1,5 +1,4 @@
 import { LogoMark } from "@/components/brand/logo";
-import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useT, type StringKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -35,9 +34,6 @@ export function Header() {
           </span>
         </div>
         <div className="flex-1" />
-        <button type="button" onClick={() => openSheet("sample")} className="rounded-full">
-          <Badge tone="sample" icon="science" className="h-[26px] px-2.5">{t("sample")}</Badge>
-        </button>
         {!pwa.isStandalone() && (
           <button type="button" onClick={() => openSheet("install")}
             className="hidden items-center gap-1.5 px-3 font-semibold text-primary lg:flex">

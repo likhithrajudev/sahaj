@@ -27,7 +27,7 @@ let dockErrorTimer: ReturnType<typeof setTimeout> | null = null;
 const lastPrompt: Partial<Record<ConsentPurpose, ConsentRequiredEvent>> = {};
 
 function waitForReply(turn: "sending" | "thinking") {
-  set({ turn });
+  set({ turn, replied: false });
   if (turnTimer) clearTimeout(turnTimer);
   turnTimer = setTimeout(() => {
     if (get().turn !== "sending" && get().turn !== "thinking") return;
@@ -162,6 +162,7 @@ function handleEvent(e: ServerEvent) {
       break;
 
     case "assistant": {
+      set({ replied: true }); // the answer replaces the "working on it" bubble, even while its audio is still coming
       pushItem({
         kind: "assistant", agent: e.agent, text: e.text, citations: e.citations, traceId: e.trace_id,
         replyKind: e.kind ?? "answer", fallback: !!e.fallback, audioUrl: null, audioSeconds: null, textOnly: false,

@@ -74,6 +74,8 @@ export interface SessionState {
   /** The person declined the conversation consent. */
   declined: boolean;
   turn: TurnState;
+  /** The reply's text has arrived for this turn (its audio may still be on the way). */
+  replied: boolean;
   /** Latest server status step while thinking. */
   status: Stage | null;
   statusHistory: Stage[];
@@ -108,6 +110,7 @@ export const initialSession: SessionState = {
   consentPrompt: null,
   declined: false,
   turn: "idle",
+  replied: false,
   status: null,
   statusHistory: [],
   recordingSince: null,

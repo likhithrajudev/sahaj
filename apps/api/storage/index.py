@@ -8,6 +8,8 @@ import asyncio
 import io
 import logging
 import re
+import zipfile
+import xml.etree.ElementTree as ET
 from typing import List, Optional, Tuple
 
 from pgvector import Vector
@@ -20,6 +22,7 @@ from services import ocr, telemetry
 from trust.pii import Vault, normalise_digits
 
 log = logging.getLogger("sahaj.docindex")
+MAX_EXPANDED_DOCUMENT_BYTES = 64 * 1024 * 1024
 
 SCHEMA = f"""
 ALTER TABLE user_files ADD COLUMN IF NOT EXISTS index_status TEXT NOT NULL DEFAULT 'none';
@@ -64,7 +67,10 @@ async def reindex_pending() -> int:
     with tenancy.system():
         async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             await cur.execute("""SELECT f.id, f.user_id, f.blob_name, f.content_type, f.tenant_id FROM user_files f
-                             WHERE f.content_type IN ('application/pdf', 'image/png', 'image/jpeg')
+                             WHERE f.content_type IN ('application/pdf', 'image/png', 'image/jpeg', 'text/plain',
+                               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                               'application/vnd.openxmlformats-officedocument.presentationml.presentation')
                                AND f.index_status IN ('none', 'failed')""")
             rows = await cur.fetchall()
     done = 0
@@ -132,18 +138,102 @@ async def _status(file_id: str, status: str, chunks: int = 0) -> None:
 
 
 async def _text(data: bytes, content_type: str, language: str) -> Tuple[List[Tuple[int, str]], str]:
-    """(pages, how they were read). A PDF with a text layer is read here, for free; a scanned PDF or a photo goes to
-    Sarvam's OCR."""
+    """(pages, how they were read). Text, office files and PDFs with a text layer are parsed locally; scanned PDFs
+    and photos go to Sarvam OCR."""
     if content_type == "application/pdf":
         pages = await asyncio.to_thread(pdf_pages, data)
         if pages:
             return pages, "text"
+    if content_type == "text/plain":
+        text = data.decode("utf-8").strip()
+        return ([(1, text)] if text else []), "text"
+    if content_type.startswith("application/vnd.openxmlformats-officedocument."):
+        pages = await asyncio.to_thread(office_pages, data, content_type)
+        return pages, "text"
     if not ocr.supported(content_type):
         return [], "unsupported"
     pages, billed = await ocr.read(data, content_type, language)
     telemetry.meter({"kind": "ocr", "provider": "sarvam", "model": "sarvam-vision", "purpose": "ocr", "units": billed,
                      "cost_usd": billed * config.SARVAM_OCR_PRICE_PER_PAGE})
     return pages, "ocr"
+
+
+def office_pages(data: bytes, content_type: str) -> List[Tuple[int, str]]:
+    """Extract readable text from DOCX, XLSX and PPTX without executing document content."""
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        members = archive.infolist()
+        if sum(item.file_size for item in members) > MAX_EXPANDED_DOCUMENT_BYTES:
+            raise ValueError("The expanded office document is too large to read.")
+        files = {item.filename for item in members}
+        pages: List[Tuple[int, str]] = []
+
+        def root(name: str):
+            if name not in files:
+                return None
+            return ET.fromstring(archive.read(name))
+
+        if content_type.endswith("wordprocessingml.document"):
+            document = root("word/document.xml")
+            if document is None:
+                return []
+            paragraphs = []
+            for paragraph in document.iter():
+                if paragraph.tag.endswith("}p"):
+                    value = " ".join(node.text or "" for node in paragraph.iter() if node.tag.endswith("}t")).strip()
+                    if value:
+                        paragraphs.append(value)
+            text = "\n".join(paragraphs)
+            if text:
+                pages.append((1, text))
+        elif content_type.endswith("spreadsheetml.sheet"):
+            shared_root = root("xl/sharedStrings.xml")
+            shared = [] if shared_root is None else ["".join(n.text or "" for n in si.iter() if n.tag.endswith("}t"))
+                                                      for si in shared_root if si.tag.endswith("}si")]
+            sheet_names = sorted((n for n in files if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)),
+                                 key=lambda n: int(re.search(r"sheet(\d+)", n).group(1)))
+            for page, name in enumerate(sheet_names[:config.DOC_MAX_PAGES], 1):
+                sheet = root(name)
+                if sheet is None:
+                    continue
+                rows = []
+                for row in sheet.iter():
+                    if not row.tag.endswith("}row"):
+                        continue
+                    cells = []
+                    for cell in row:
+                        if not cell.tag.endswith("}c"):
+                            continue
+                        value = next((node.text for node in cell if node.tag.endswith("}v")), None)
+                        if cell.attrib.get("t") == "s" and value is not None:
+                            try:
+                                value = shared[int(value)]
+                            except (ValueError, IndexError):
+                                value = ""
+                        elif cell.attrib.get("t") == "inlineStr":
+                            inline = next((node for node in cell if node.tag.endswith("}is")), None)
+                            value = "" if inline is None else "".join(n.text or "" for n in inline.iter() if n.tag.endswith("}t"))
+                        if value:
+                            cells.append(f"{cell.attrib.get('r', '')}: {value}")
+                    if cells:
+                        rows.append(" | ".join(cells))
+                if rows:
+                    pages.append((page, "\n".join(rows)))
+        elif content_type.endswith("presentationml.presentation"):
+            slide_names = sorted((n for n in files if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
+                                 key=lambda n: int(re.search(r"slide(\d+)", n).group(1)))
+            for page, name in enumerate(slide_names[:config.DOC_MAX_PAGES], 1):
+                slide = root(name)
+                if slide is None:
+                    continue
+                paragraphs = []
+                for paragraph in slide.iter():
+                    if paragraph.tag.endswith("}p"):
+                        value = " ".join(node.text or "" for node in paragraph.iter() if node.tag.endswith("}t")).strip()
+                        if value:
+                            paragraphs.append(value)
+                if paragraphs:
+                    pages.append((page, "\n".join(paragraphs)))
+        return pages
 
 
 async def index_file(user_id: str, file_id: str, data: bytes, content_type: str, language: str = "en-IN") -> str:

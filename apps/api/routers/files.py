@@ -43,8 +43,11 @@ def _owns_blob(user: User, row: dict) -> bool:
 
 
 def index_readable(content_type: str) -> bool:
-    """PDFs (text or scanned) and photos (PNG, JPEG) can be read; other files are kept but not read."""
-    return content_type in ("application/pdf", "image/png", "image/jpeg")
+    """PDFs, common office documents, text and photos can be read; other uploads are kept but not read."""
+    return content_type in ("application/pdf", "image/png", "image/jpeg", "text/plain",
+                             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             "application/vnd.openxmlformats-officedocument.presentationml.presentation")
 
 
 def _ocr_language(language: Optional[str]) -> str:
@@ -67,7 +70,7 @@ async def list_files(category: Optional[str] = Query(None, description="image, d
                        "types": ["images (PNG, JPEG, WebP, GIF)", "PDF", "Word, Excel, PowerPoint", "plain text",
                                  "audio (WAV, MP3, OGG, FLAC, M4A, WebM)"]},
             "folder": f"{files.folder(user)}/",
-            "items": [_public(r) for r in await files.list_for(user.id, category)]}
+            "items": [_public(r) for r in await files.list_for(user.id, category) if _owns_blob(user, r)]}
 
 
 @router.put("/consent")
@@ -126,7 +129,7 @@ async def set_analysis_consent(body: ConsentUpdate, request: Request, user: User
         return {"consent": False, "forgotten": result["erased"].get("document_passages", 0)}
     queued = 0
     for row in await files.list_for(user.id):
-        if index_readable(row["content_type"]) and row["index_status"] in ("none", "failed", "over_budget"):
+        if _owns_blob(user, row) and index_readable(row["content_type"]) and row["index_status"] in ("none", "failed", "over_budget"):
             full = await files.get(user.id, str(row["id"]))
             data = b"".join([c async for c in blob.get().stream(full["blob_name"])])
             _index_in_background(user.id, str(row["id"]), data, row["content_type"], user.language)

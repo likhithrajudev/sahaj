@@ -201,7 +201,7 @@ def test_structure_splits_statements_and_keeps_their_sources():
     text = "The waiting period is 30 days. [doc:1.1] Cover is up to 1.5 lakh [doc:2.3]. Ask me anything else?"
     s = structure.build(text, ["Premiums are indicative."], SRC, "answer")
     assert [p["text"] for p in s["points"]] == ["The waiting period is 30 days.", "Cover is up to 1.5 lakh.", "Ask me anything else?"]
-    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], ["doc:2.3"], []]
+    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], ["doc:1.1", "doc:2.3"], []]
     assert s["summary"] == "The waiting period is 30 days."
     assert [x["id"] for x in s["sources"]] == ["doc:1.1", "doc:2.3"] and s["notes"] == ["Premiums are indicative."]
     assert "[" not in "".join(p["text"] for p in s["points"])
@@ -209,8 +209,19 @@ def test_structure_splits_statements_and_keeps_their_sources():
 
 def test_structure_drops_tags_the_reply_was_not_allowed_to_cite_and_handles_hindi_and_empty():
     s = structure.build("प्रतीक्षा अवधि 30 दिन है। [doc:1.1] यह गलत है [doc:9.9]।", [], SRC, "answer")
-    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], []]
+    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], ["doc:1.1"]]
     assert structure.build("", [], {}, "ask")["points"] == []
+
+
+def test_structure_keeps_answer_sources_clickable_for_summary_and_citationless_answers():
+    summary_citation = structure.build("First fact. [doc:1.1] Second fact.", [], SRC, "answer")
+    assert summary_citation["points"][0]["sources"] == ["doc:1.1"]
+    assert summary_citation["points"][1]["sources"] == ["doc:1.1"]
+
+    citationless = structure.build("First fact. Second fact.", [], SRC, "answer")
+    assert citationless["points"][0]["sources"] == []
+    assert citationless["points"][1]["sources"] == list(SRC)
+    assert citationless["sources"] == [{"id": key, "text": value} for key, value in SRC.items()]
 
 
 def test_assistant_event_carries_the_structured_view_and_unchanged_text():
@@ -221,6 +232,7 @@ def test_assistant_event_carries_the_structured_view_and_unchanged_text():
     reply = next(m for m in ws.sent if m["type"] == "assistant")
     assert reply["text"] == "The waiting period is 30 days." and reply["structured"]["summary"] == reply["text"]
     assert reply["structured"]["kind"] == "answer" and reply["structured"]["sources"] == []
+    assert reply["citations"] == reply["structured"]["sources"]
 
 
 # ---------------------------------------------------------------- trust badge and suggestions

@@ -38,7 +38,7 @@ export interface ReadyResponse {
   status: "ready";
   storage: "ok" | "down" | "not configured";
   knowledge_base: { ok: boolean; clauses: number; domains?: Record<string, number>; problem?: string };
-  features: { google_sign_in: boolean; web_search: boolean; financial_providers: FinancialProvider[] };
+  features: { google_sign_in: boolean; web_search: boolean; insurance_web_search: boolean; financial_providers: FinancialProvider[] };
 }
 
 export interface ChatMessage {
@@ -153,6 +153,67 @@ export interface ApplicationResult {
   checkout_url?: string | null;
 }
 
+export interface StoredFile {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+  index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "over_budget" | "failed";
+  indexed_chunks: number;
+  category: string;
+}
+
+export interface FilesResponse {
+  consent: boolean;
+  consent_text: { purpose: "documents"; version: string; text: string };
+  analysis_consent: boolean;
+  analysis_consent_text: { purpose: "document_analysis"; version: string; text: string };
+  limits: { max_bytes: number; max_files: number; types: string[] };
+  items: StoredFile[];
+}
+
+export interface EmiCalculationInput {
+  principal: number;
+  annual_rate_percent: number;
+  tenure_months: number;
+}
+
+export interface EmiCalculation {
+  kind: "emi";
+  currency: "INR";
+  method: "reducing_balance";
+  inputs: EmiCalculationInput;
+  result: { emi: number; total_payment: number; total_interest: number };
+  disclaimer: string;
+}
+
+export interface PrepaymentCalculationInput extends EmiCalculationInput {
+  prepay_amount: number;
+  mode?: "reduce_tenure" | "reduce_emi";
+}
+
+export interface PrepaymentCalculation {
+  kind: "prepayment";
+  currency: "INR";
+  method: "reducing_balance";
+  inputs: PrepaymentCalculationInput & { mode: "reduce_tenure" | "reduce_emi" };
+  result: { emi_before: number; emi_after: number; months_before: number; months_after: number;
+    months_saved: number; interest_before: number; interest_after: number; interest_saved: number };
+  disclaimer: string;
+}
+
+export interface SupportCase {
+  id: string;
+  reference: string;
+  kind: "video_kyc" | "callback" | "complaint" | "help";
+  priority: string;
+  status: string;
+  scheduled_for?: string | null;
+  [key: string]: unknown;
+}
+
 export interface SahajClientOptions {
   baseUrl: string;
   tenantId?: string;
@@ -234,6 +295,66 @@ export class SahajClient {
     return this.request("/users/me/usage");
   }
 
+  async files(category?: string): Promise<FilesResponse> {
+    return this.request(`/files${category ? `?category=${encodeURIComponent(category)}` : ""}`);
+  }
+
+  async setDocumentConsent(granted: boolean, version: string): Promise<unknown> {
+    return this.request("/consents/documents", { method: "PUT", body: { granted, version } });
+  }
+
+  async setDocumentAnalysisConsent(granted: boolean, version: string): Promise<unknown> {
+    return this.request("/consents/document_analysis", { method: "PUT", body: { granted, version } });
+  }
+
+  async setVideoKycConsent(granted: boolean, version: string): Promise<unknown> {
+    return this.request("/consents/video_kyc", { method: "PUT", body: { granted, version } });
+  }
+
+  async uploadFile(file: Blob, filename = "upload"): Promise<StoredFile> {
+    const form = new FormData();
+    form.append("file", file, filename);
+    return this.request("/files", { method: "POST", form });
+  }
+
+  async downloadFile(id: string): Promise<Blob> {
+    const response = await this.fetcher(`${this.baseUrl}/files/${encodeURIComponent(id)}`, {
+      headers: this.headers(true, false),
+    });
+    if (!response.ok) throw await this.apiError(response);
+    return response.blob();
+  }
+
+  async deleteFile(id: string): Promise<void> {
+    return this.request(`/files/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async calculateEmi(input: EmiCalculationInput): Promise<EmiCalculation> {
+    return this.request("/calculators/emi", { method: "POST", body: input });
+  }
+
+  async calculatePrepayment(input: PrepaymentCalculationInput): Promise<PrepaymentCalculation> {
+    return this.request("/calculators/prepayment", { method: "POST", body: input });
+  }
+
+  async cases(): Promise<{ items: SupportCase[]; active_messages: unknown[] }> {
+    return this.request("/cases");
+  }
+
+  async requestVideoKyc(note?: string): Promise<SupportCase> {
+    return this.request("/cases", { method: "POST", body: { kind: "video_kyc", ...(note ? { note } : {}) } });
+  }
+
+  async cancelCase(id: string): Promise<void> {
+    return this.request(`/cases/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  }
+
+  async scheduleVideoKyc(id: string, scheduledFor: string, meetingUrl?: string): Promise<SupportCase> {
+    return this.request(`/desk/cases/${encodeURIComponent(id)}/video-kyc`, {
+      method: "POST", body: { scheduled_for: scheduledFor, ...(meetingUrl ? { meeting_url: meetingUrl } : {}) },
+    });
+  }
+
   async searchInsurance(query: string, limit?: number): Promise<InsuranceSearchResponse> {
     return this.request("/search/insurance", { method: "POST", body: { query, ...(limit ? { limit } : {}) } });
   }
@@ -311,18 +432,19 @@ export class SahajClient {
     this.refreshToken = session.refresh_token;
   }
 
-  private headers(auth: boolean): HeadersInit {
-    const headers: Record<string, string> = { "content-type": "application/json" };
+  private headers(auth: boolean, json = true): HeadersInit {
+    const headers: Record<string, string> = {};
+    if (json) headers["content-type"] = "application/json";
     if (auth && this.accessToken) headers.authorization = `Bearer ${this.accessToken}`;
     if (this.tenantId) headers["X-Tenant-ID"] = this.tenantId;
     return headers;
   }
 
-  private async request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  private async request<T>(path: string, options: { method?: string; body?: unknown; form?: FormData; auth?: boolean } = {}): Promise<T> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       method: options.method ?? "GET",
-      headers: this.headers(options.auth !== false),
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      headers: this.headers(options.auth !== false, options.form === undefined),
+      ...(options.form !== undefined ? { body: options.form } : options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
     if (!response.ok) throw await this.apiError(response);
     if (response.status === 204) return undefined as T;

@@ -1,10 +1,12 @@
 """Asking questions about a person's own PDFs: reading, masking before anything is stored, per-user retrieval."""
 import asyncio
 import hashlib
+import io
 import math
 import os
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -69,6 +71,35 @@ def env(tmp_path, monkeypatch):
 def test_pdf_text_is_read_page_by_page():
     pages = index.pdf_pages(make_pdf(["The waiting period is 30 days.", "Premium is paid yearly."]))
     assert [p for p, _ in pages] == [1, 2] and "waiting period" in pages[0][1]
+
+
+def office_file(files_by_name):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name, content in files_by_name.items():
+            archive.writestr(name, content)
+    return output.getvalue()
+
+
+def test_docx_text_is_extracted_for_indexing():
+    raw = office_file({"word/document.xml": '<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>Loan terms</w:t></w:r></w:p></w:body></w:document>'})
+    assert index.office_pages(raw, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") == [(1, "Loan terms")]
+
+
+def test_xlsx_shared_and_inline_cell_text_is_extracted_for_indexing():
+    raw = office_file({
+        "xl/sharedStrings.xml": '<sst xmlns="s"><si><t>Principal</t></si></sst>',
+        "xl/worksheets/sheet1.xml": '<worksheet xmlns="s"><sheetData><row><c r="A1" t="s"><v>0</v></c>'
+                                    '<c r="B1" t="inlineStr"><is><t>500000</t></is></c></row></sheetData></worksheet>',
+    })
+    pages = index.office_pages(raw, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert pages == [(1, "A1: Principal | B1: 500000")]
+
+
+def test_pptx_slide_text_and_plain_text_are_read_for_indexing():
+    raw = office_file({"ppt/slides/slide1.xml": '<p:sld xmlns:p="p" xmlns:a="a"><a:p><a:r><a:t>Loan options</a:t></a:r></a:p></p:sld>'})
+    assert index.office_pages(raw, "application/vnd.openxmlformats-officedocument.presentationml.presentation") == [(1, "Loan options")]
+    assert asyncio.run(index._text("Policy clause".encode(), "text/plain", "en-IN")) == ([(1, "Policy clause")], "text")
 
 
 def test_unreadable_or_textless_pdfs_do_not_crash_indexing():

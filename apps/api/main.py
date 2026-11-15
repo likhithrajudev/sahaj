@@ -18,7 +18,7 @@ from auth import feedback as feedback_store
 from rag import ingest, store
 from rag.embeddings import warm_up
 from orchestrator import registry
-from routers import audit, auth, chat, consents, desk, feedback, files, financial, ops, platform, procedures, search, stt, usage, users, voice
+from routers import audit, auth, calculators, chat, consents, desk, feedback, files, financial, ops, platform, procedures, search, stt, usage, users, voice
 from storage import blob, files as file_store, index as doc_index
 from usage import ledger as usage_ledger
 from desk import store as desk_store
@@ -110,6 +110,7 @@ app.include_router(audit.router)
 app.include_router(platform.router)
 app.include_router(search.router)
 app.include_router(financial.router)
+app.include_router(calculators.router)
 
 
 @app.exception_handler(auth_store.Unavailable)

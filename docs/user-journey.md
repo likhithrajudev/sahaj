@@ -4,6 +4,14 @@ This document describes Sahaj from the person's point of view first, then explai
 
 > **Sample data.** Every insurance plan, premium and loan offer in Sahaj today is **fictional sample data** (every plan name carries "(SAMPLE)"). The flows below are real; the products are placeholders until real insurer and lender data replaces them.
 
+## 0. Who Sahaj is for
+
+**Primary persona — Asha, a first-time digital borrower and family decision-maker.** Asha lives in India, prefers Hindi or Hinglish, wants to understand health cover for her family and may need a personal loan. She has an offer letter, bank statement or policy document as a PDF/photo, but does not know which numbers matter. She wants the assistant to explain terms in plain language, compare only relevant options, calculate repayments, and help submit a request after she reviews the actual terms. She needs clear consent prompts, a human option, and no promise that a score guarantees approval.
+
+**Supporting persona — Sahaj service executive.** The executive receives cases that need a person, can read the masked conversation summary, answer the customer, and schedule a video KYC appointment when the customer has opted in. The regulated lender's authorised official conducts V-CIP. The executive cannot see another customer's private document inventory.
+
+**System persona — authorised financial provider.** A separately installed credit-bureau, lender or insurer adapter returns the real score, offer, quote or application status. There are no provider adapters configured in this checkout, so action endpoints return `503 provider_unavailable` until those partnerships and credentials are in place. Sample catalogue data must never be presented as a live quote or offer.
+
 ---
 
 ## 1. What Sahaj is
@@ -43,7 +51,7 @@ Sahaj is built to be trustworthy before it is clever: it answers only from appro
                      (approved documents)     (consent, turns, handoffs)
 ```
 
-The app and the backend talk over one **WebSocket** connection that stays open for the whole conversation. The person presses a button to talk (**push-to-talk**), speaks for up to 30 seconds, and releases. Sahaj replies with text, sometimes a card (a table or recommendation), and speech.
+Voice clients use a **WebSocket** connection. Typed clients can use the text-only `POST /chat/stream` Server-Sent Events endpoint. The current test console's microphone is push-to-talk; the backend also has a streaming voice protocol for clients that implement speech-boundary detection. Sahaj replies with text, sometimes a card (a table or recommendation), and optional speech.
 
 ---
 
@@ -51,7 +59,7 @@ The app and the backend talk over one **WebSocket** connection that stays open f
 
 ### Step 1: Opening the app
 
-The app connects. Sahaj creates a **session**, a private conversation with its own reference number. Nothing is processed yet.
+The person signs in, chooses a language and connects. Sahaj creates a **session**, a private conversation with its own reference number. No chat or voice is processed before the required conversation consent.
 
 ### Step 2: Giving permission to talk
 
@@ -64,7 +72,7 @@ Every consent is written to a tamper-evident ledger with the exact wording they 
 
 ### Step 3: Talking
 
-The person holds the talk button, speaks, and lets go. They see what Sahaj heard ("You: ...") and then Sahaj's reply, which is also spoken aloud. Answers about policies and loans show **source tags** (like `[concepts-insurance-basics:4.3]`) so the answer can be traced to a specific clause. The tags are shown on screen but never read aloud.
+The person can type a message or, in a voice client, speak and send it. They see what Sahaj heard (for voice, the transcript) and then Sahaj's reply, which can also be spoken aloud. Answers about policies and loans include **source IDs** (like `[concepts-insurance-basics:4.3]`) and source text so the answer can be traced to a specific clause. Source IDs are never read aloud.
 
 ### Step 4: Getting what they came for
 
@@ -175,6 +183,42 @@ They can withdraw either permission at any time. Withdrawing the **personal-deta
 - **Silence or noise:** "I didn't catch that."
 - **A vague message** ("what about that one?"): Sahaj asks a clarifying question instead of guessing.
 - **A message in the middle of the questions that is a question itself** ("what is a waiting period?"): Sahaj answers it, and the questions can continue.
+
+### 4.11 Buy an insurance policy
+
+1. Asha describes who needs cover and what matters. Sahaj asks the needs-analysis questions, reads back the details and waits for confirmation before making a recommendation.
+2. Sahaj can explain and compare the catalogue. In this checkout the catalogue is sample data; it must not be treated as an insurer quote.
+3. For a real purchase, the backend lists configured insurers, requests a quote for Asha's confirmed details, and shows the insurer, premium, payment frequency and policy wording/version returned by that provider.
+4. Asha reviews the wording and explicitly confirms the selected quote and terms version. Only then does Sahaj submit the purchase request. The insurer/provider handles payment and policy issuance through its approved checkout flow.
+5. The application status is shown from the provider response and remains available in Asha's own financial event list. Sahaj never tells her a policy is issued unless the insurer says so.
+
+The REST path is `POST /financial/insurance/quotes` followed by `POST /financial/insurance/purchase`; both are authenticated and consent-gated. No insurer adapter is configured now, so the live quote/purchase requests return `503 provider_unavailable` instead of fake data.
+
+### 4.12 Apply for a loan with a real credit check
+
+1. Asha first asks questions, uploads a Key Facts Statement if she has one, and uses Sahaj's EMI calculator to understand the payment. This estimate is not a lender quote.
+2. To request a bureau check, Sahaj names the selected authorised provider, displays the current `credit_bureau` consent, and asks for explicit confirmation before sending identity fields. A CIBIL score comes from TransUnion CIBIL through an authorised adapter; Sahaj does not calculate a score from income, PAN or chat history.
+3. If the provider returns a usable check, Asha chooses a requested amount, tenure and purpose. Sahaj asks an installed lender adapter for current offers and presents the lender's terms and Key Facts Statement. It does not predict approval.
+4. Asha reviews the KFS and enters only the application fields the lender requires. Sahaj submits only after she accepts the exact KFS version and confirms the application.
+5. The lender returns the application status and remains responsible for the credit decision. If that lender requires video KYC, Asha separately grants the versioned video-KYC consent and requests an appointment. The executive desk books a time and HTTPS meeting URL. The authorised official of the regulated lender must conduct the V-CIP; Sahaj currently provides case creation and scheduling only.
+
+The REST path is `POST /financial/credit-check` → `POST /financial/loan/offers` → user reviews offer/KFS → `POST /financial/loan/apply`. Loan offers require a recent check from the same provider. With no credit-bureau or lender adapter configured now, these live steps return `503 provider_unavailable` and no credit data is fabricated.
+
+### 4.13 Upload and find a personal document
+
+1. Asha opens her own document inventory with `GET /files`. The API returns only her file metadata and consent states.
+2. After seeing and granting `documents` consent, she uploads one file per `multipart/form-data` request to `POST /files`. The backend accepts PDF, PNG, JPEG, WebP, GIF, DOCX, XLSX, PPTX, UTF-8 text and supported audio within the API's returned size/file limits.
+3. A separate `document_analysis` consent allows indexing and questions. PDF text, office files and UTF-8 text are parsed locally; scanned PDFs and PNG/JPEG images use OCR. WebP, GIF and audio can be stored but are not indexed for document question-answering.
+4. She polls `GET /files` until that item is `ready`, then asks a question in chat. Matching passages are cited as `mydoc-*`; personal passages are not cached or shared. `GET /files/{id}` and `DELETE /files/{id}` are owner-checked, so another person's ID returns `404`.
+5. Withdrawing `document_analysis` removes extracted passages while leaving the files. Withdrawing `documents` deletes the stored files too. S3 is private and the API returns no public object URLs.
+
+### 4.14 Ask for current public information
+
+If the local policy/KFS documents do not contain an answer about publicly available insurance or lender information, Sahaj can use `POST /search/web` with the `insurance` or `loan` domain. The answer's `web:*` source entries include title and URL alongside page text. It must label this as public research; the result is not an application-specific quote, eligibility check or approval. The `FIRECRAWL_API_KEY` feature must be configured.
+
+### 4.15 See a source behind an answer
+
+Each assistant response includes `structured.points[].sources` and `structured.sources[]` (`id`, `text`). The text is the exact clause or web result passage used by the answer. A text client should resolve each point's source IDs against `structured.sources` and show the matching text; the top-level `citations` field is a compatibility copy of that same list. The backend also keeps source IDs visible when the fact-check passed over retrieved evidence but the model omitted inline tags, and carries summary-only sources onto the first body point. Blocked safe replies have no source chips. Sources are returned with the answer, so no separate source fetch is needed.
 
 ---
 
@@ -302,20 +346,20 @@ Everything below is sample data. Sahaj's questions were generated live; figures 
 
 ## 10. What is built, and what is not yet
 
-**Built and tested:** consent and the audit ledger; personal-detail masking; the document search and the safety checks; explanation, comparison and recommendation for insurance; EMI and prepayment calculators; the loan question journeys; handover to a human (recorded and sent to a webhook); the orchestrator with intent classification; caching; the workflow report; 11 voice languages.
+**Backend capabilities in this checkout:** sign-in and versioned consent; personal-detail masking; source-grounded document search; owner-scoped file inventory, upload, download and deletion; PDF, image, office and text extraction after document-analysis consent; Firecrawl search; chat and calculators; generic credit-bureau, lender and insurer adapter interfaces; financial action endpoints; customer/executive support cases and video-KYC scheduling.
 
-**Not built yet:**
+**Not ready for production use:**
 
 | Missing | Why it matters |
 |---|---|
 | **Real plans and real lender documents** | Everything is sample data until supplied |
-| **User login** | A session is anonymous; consent belongs to the connection |
-| **Video KYC and identity verification** | The permission wording exists; no vendor is integrated |
-| **Payments** (UPI autopay, cards) | Planned with Razorpay; money flow must go directly to the lender |
-| **KFS delivery and acceptance step** | Sahaj explains a KFS but does not yet present and record acceptance of one |
+| **Live products and partners** | Catalogue data is fictional, and no authorised lender, insurer or CIBIL adapter is configured; financial actions return `503 provider_unavailable` |
+| **Video KYC session and identity decision** | Case creation, consent, and human appointment scheduling are exposed; the call itself and verification need a V-CIP provider/process and an authorised human |
+| **Payment processing and policy issuance** | Purchase submission and HTTPS checkout handoff are adapter capabilities; no payment/insurer adapter is configured |
+| **Provider KFS and policy delivery** | The API records acceptance of a provider-supplied KFS/policy version; there is no live provider to supply those documents yet |
 | **Data deletion on request, retention rules, grievance register** | Needed for RBI and data-protection compliance |
-| **A console for the human who takes over** | The handover is recorded and delivered, but there is no live chat tool yet |
-| **Interrupting Sahaj while it speaks, or automatic end-of-speech detection** | Today it is push-to-talk |
+| **Human operation at scale** | Case APIs and executive WebSocket exist; team staffing, operational processes and service levels need configuration |
+| **Hands-free speech in the test console** | The backend supports a streaming voice protocol; client-side speech-boundary detection is required, and the test console remains push-to-talk |
 | **IRDAI advice rules mapped** | The recommendation feature is built, but the regulatory mapping is an open item |
 
 See `docs/compliance.md` for the regulatory detail and `docs/orchestration.md` for the technical design.

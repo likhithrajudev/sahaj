@@ -37,7 +37,7 @@ export class Recorder {
   private cancelled = false;
 
   private meter: { ctx: AudioContext; raf: number } | null = null;
-  /** Loudest level seen in this recording (0..1), or null when the browser didn't let us measure. */
+  /** Loudest sample in this recording (0..1 amplitude), or null when the browser didn't let us measure. */
   peak: number | null = null;
 
   /**
@@ -106,14 +106,20 @@ export class Recorder {
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
       ctx.createMediaStreamSource(stream).connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
+      // Float samples: with noise suppression and auto-gain, quiet speech is too small for 8-bit samples.
+      const data = new Float32Array(analyser.fftSize);
       const tick = () => {
-        analyser.getByteTimeDomainData(data);
+        analyser.getFloatTimeDomainData(data);
         let sum = 0;
-        for (const v of data) sum += ((v - 128) / 128) ** 2;
-        const level = Math.min(1, Math.sqrt(sum / data.length) * 4); // speech RMS is ~0.05-0.25
-        // a suspended context reads flat silence: only count it once audio is really flowing
-        if (ctx.state === "running") this.peak = Math.max(this.peak ?? 0, level);
+        let max = 0;
+        for (const v of data) {
+          sum += v * v;
+          if (Math.abs(v) > max) max = Math.abs(v);
+        }
+        const level = Math.min(1, Math.sqrt(sum / data.length) * 4); // for the bars: speech RMS is ~0.05-0.25
+        // Silence is judged by the loudest sample, not the average: speech always has peaks, even when quiet.
+        // A suspended context reads flat zeros, so it only counts once audio is really flowing.
+        if (ctx.state === "running") this.peak = Math.max(this.peak ?? 0, max);
         onLevel(level);
         if (this.meter) this.meter.raf = requestAnimationFrame(tick);
       };

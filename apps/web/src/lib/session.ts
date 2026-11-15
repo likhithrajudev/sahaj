@@ -17,8 +17,11 @@ const get = useSession.getState;
 
 /** Give up on a turn that gets no reply (the server normally answers within a few seconds). */
 const TURN_TIMEOUT_MS = 60_000;
-/** Below this peak level (0..1) a recording is treated as silence. Normal speech peaks around 0.3-1. */
-const QUIET_PEAK = 0.04;
+/**
+ * Below this peak amplitude (0..1) a recording is treated as silence. Speech peaks well above 0.05 even when quiet;
+ * a muted mic or noise-suppressed silence stays under ~0.005. Kept low so quiet speakers are never blocked.
+ */
+const QUIET_PEAK = 0.008;
 let turnTimer: ReturnType<typeof setTimeout> | null = null;
 let dockErrorTimer: ReturnType<typeof setTimeout> | null = null;
 const lastPrompt: Partial<Record<ConsentPurpose, ConsentRequiredEvent>> = {};
@@ -341,6 +344,7 @@ export async function stopTalking() {
     return showDockError("tooShort");
   }
   // Silence isn't sent: speech-to-text tends to "hear" a word in some language in it, which Sahaj would answer.
+  if (import.meta.env.DEV) console.debug(`[sahaj] recording ${recording.size} bytes, peak ${recorder.peak?.toFixed(4) ?? "n/a"}`);
   if (recorder.peak !== null && recorder.peak < QUIET_PEAK) {
     set({ turn: "idle" });
     return showDockError("tooQuiet");

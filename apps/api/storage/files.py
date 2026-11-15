@@ -109,17 +109,24 @@ def safe_name(name: Optional[str]) -> str:
     return name[:120] or "file"
 
 
-def blob_name(username: str, category: str, ext: str, *, group: Optional[str] = None, stem: Optional[str] = None) -> str:
-    """The key of a stored file: <username>/<folder>/[<group>/]<id>.<ext>. Every part comes from our own checked values
-    (the username is derived and sanitised, the extension from what the bytes are), never from what the caller typed."""
-    parts = [username, FOLDERS[category]] + ([group] if group else [])
+def folder(user) -> str:
+    """The person's folder: <tenant>/<username>. The tenant comes first, so one tenant's files never share a prefix with
+    another's, and a tenant's whole data can be listed, exported or deleted by prefix."""
+    return f"{user.tenant_id}/{user.username}"
+
+
+def blob_name(owner: str, category: str, ext: str, *, group: Optional[str] = None, stem: Optional[str] = None) -> str:
+    """The key of a stored file: <tenant>/<username>/<folder>/[<group>/]<id>.<ext> (`owner` is `folder(user)`). Every part
+    comes from our own checked values (tenant and username are derived and sanitised, the extension from what the bytes
+    are), never from what the caller typed."""
+    parts = [owner, FOLDERS[category]] + ([group] if group else [])
     return "/".join(parts + [f"{stem or uuid.uuid4().hex}.{ext}"])
 
 
 def prefixes(user, categories: Optional[tuple] = None) -> List[str]:
     """Key prefixes under which a person's files live (plus the earlier users/<id>/ layout, so nothing is left behind)."""
     folders = [FOLDERS[c] for c in (categories or tuple(FOLDERS))]
-    found = [f"{user.username}/{f}/" for f in folders]
+    found = [f"{folder(user)}/{f}/" for f in folders]
     return found + ([f"users/{user.id}/"] if categories is None else [])
 
 
@@ -128,8 +135,8 @@ def digest(data: bytes) -> str:
 
 
 async def init_schema() -> None:
-    async with db().connection() as conn:
-        await conn.execute(SCHEMA)
+    from tenancy.db import create_tables
+    await create_tables(db(), SCHEMA)
 
 
 async def add(user_id: str, filename: str, content_type: str, data: bytes, blob: str, category: str = "document") -> dict:

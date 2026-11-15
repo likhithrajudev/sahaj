@@ -13,7 +13,13 @@ LONG_CLAUSE = 1800  # characters; the embedding model reads about 512 tokens and
 
 async def sync_all() -> dict:
     """Bring the database in line with knowledge/: embed new or changed clauses, delete removed ones. The pool must be
-    open. Returns {domain: clauses}."""
+    open. Returns {domain: clauses}. Runs as the platform: these documents are shared by every tenant."""
+    import tenancy
+    with tenancy.system():
+        return await _sync_all()
+
+
+async def _sync_all() -> dict:
     summary = {}
     for domain in loader.domains():
         chunks = loader.load_chunks(domain)

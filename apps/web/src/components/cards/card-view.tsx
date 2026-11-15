@@ -1,7 +1,7 @@
-import type { Card } from "@sahaj/contracts";
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/lib/i18n";
 import { clean, rupees } from "@/lib/utils";
+import type { ShownCard as Card } from "@/store/session";
 import { useUi } from "@/store/ui";
 import { ProfileSummary, Recommendation } from "./advice";
 import { ComparisonCard } from "./comparison";

@@ -44,8 +44,10 @@ _entries: Dict[str, Entry] = {}
 
 
 async def _end(entry: Entry) -> None:
+    import tenancy
     async with entry.lock:
-        await entry.session.close()  # saves memory, if the person allows it
+        with tenancy.as_tenant(entry.session.user.tenant_id):   # an idle sweep may run inside another person's request
+            await entry.session.close()  # saves memory, if the person allows it
 
 
 async def sweep() -> None:
@@ -73,14 +75,31 @@ def acquire(user: User, session_id: Optional[str], ip: Optional[str] = None) -> 
 
 
 async def end(user: User, session_id: str) -> bool:
+    """End a conversation on purpose: it is closed (memory saved if allowed) and its working memory dropped, so it cannot
+    be resumed. (An idle conversation, by contrast, stays resumable until its working memory expires.)"""
+    from memory import working
     entry = _entries.get(session_id)
     if entry is None or entry.user_id != user.id:
+        if await working.load(user, session_id):   # held by another worker, or only in working memory
+            await working.drop(user, session_id)
+            return True
         return False
     _entries.pop(session_id)
     await _end(entry)
+    await working.drop(user, session_id)
     return True
 
 
 async def shutdown() -> None:
     for sid in list(_entries):
         await _end(_entries.pop(sid))
+
+
+async def restore(user: User, session_id: str, ip: Optional[str] = None) -> Tuple[Optional[Entry], bool]:
+    """A conversation another worker (or a restarted one) held: rebuilt from working memory. (entry, created)."""
+    session = Session(QueueSocket(asyncio.Queue()), user, ip)
+    if not await session.restore(session_id):
+        return None, False
+    entry = Entry(session, user.id)
+    _entries[session.id] = entry
+    return entry, False

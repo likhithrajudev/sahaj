@@ -61,17 +61,38 @@ def parse(raw: str) -> Dict:
     }
 
 
-async def remember(user_id: str, history: List[dict]) -> bool:
-    """Summarise a finished conversation into memory. Returns whether anything was stored."""
+async def summarise(history: List[dict]) -> Optional[Dict]:
+    """{"summary", "facts"} from a finished conversation (one model call), or None when it is not worth one."""
     lines = [f"{m['role']}: {m['content']}" for m in history if not m["content"].startswith("[")]
     if sum(1 for m in history if m["role"] == "user" and not m["content"].startswith("[")) < 2:
-        return False   # one question is not worth a model call to summarise
+        return None   # one question is not worth a model call to summarise
     reply = await chat([{"role": "system", "content": INSTRUCTIONS},
                         {"role": "user", "content": "Conversation:\n" + "\n".join(lines)}], purpose="memory")
     note = parse(reply)
-    if not note["summary"] and not note["facts"]:
+    return note if note["summary"] or note["facts"] else None
+
+
+async def remember(user_id: str, history: List[dict]) -> bool:
+    """Older entry point: summarise and keep the summary and facts in user_memories. Returns whether anything was stored."""
+    note = await summarise(history)
+    if not note:
         return False
     await store.save(user_id, note["summary"], note["facts"])
+    MEMORY_EVENTS.labels("saved").inc()
+    return True
+
+
+async def remember_conversation(session) -> bool:
+    """At the end of a conversation, with the memory consent: the episode (episodic memory: what happened, with an
+    embedded summary) and the stable facts (semantic memory, embedded for recall by meaning)."""
+    from memory import episodic, semantic
+    from rag.embeddings import embed_passages
+    note = await summarise(session.history)
+    summary = note["summary"] if note else None
+    vector = (await embed_passages([summary]))[0] if summary else None
+    await episodic.record(session.user, episodic.describe(session), summary, vector)
+    if note and note["facts"]:
+        await semantic.store_facts(session.user.id, note["facts"])
     MEMORY_EVENTS.labels("saved").inc()
     return True
 

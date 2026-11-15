@@ -73,8 +73,8 @@ COLUMNS = ("id, reference, user_id, session_id, kind, reason, priority, status, 
 
 
 async def init_schema() -> None:
-    async with db().connection() as conn:
-        await conn.execute(SCHEMA)
+    from tenancy.db import create_tables
+    await create_tables(db(), SCHEMA)
 
 
 def _audit(case: dict, event: str, actor: Optional[str] = None, **extra) -> None:

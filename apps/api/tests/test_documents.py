@@ -112,6 +112,8 @@ async def with_app(scenario, monkeypatch):
     await pool.open(wait=True)
     monkeypatch.setattr(rag_store, "_pool", pool)
     await store.init_schema()
+    from tests.dbsetup import init_all
+    await init_all()
     await files.init_schema()
     await index.init_schema()
     async with pool.connection() as conn:
@@ -184,10 +186,18 @@ def test_documents_are_indexed_searched_per_person_and_forgotten(monkeypatch):
         g = (await c.post("/files", files={"file": ("second.pdf", make_pdf(["Second document about a claim process."]))}, headers=h)).json()
         assert g["index_status"] == "indexing" and (await settled(c, h, g["id"]))["index_status"] == "ready"
 
-        # an image is kept but never read (there is no OCR); a PDF with no text is "empty"
+        # a photo is read by OCR (mocked here) and becomes searchable like any PDF
+        async def fake_ocr(data, content_type, language="en-IN"):
+            return [(1, "Pharmacy bill from City Hospital. Prescription attached for all medicines.")], 1
+        monkeypatch.setattr(index.ocr, "read", fake_ocr)
         png = b"\x89PNG\r\n\x1a\n" + b"x" * 40
-        p = (await c.post("/files", files={"file": ("scan.png", png)}, headers=h)).json()
-        assert p["index_status"] == "none" and p["category"] == "image"
+        p = (await c.post("/files", files={"file": ("bill.png", png)}, headers=h)).json()
+        assert p["category"] == "image" and (await settled(c, h, p["id"]))["index_status"] == "ready"
+        assert any("pharmacy" in x["text"].lower() for x in await retrieve_module.retrieve("insurance", "pharmacy bill prescription", [], user_id=me))
+        # a scanned PDF that OCR finds nothing on is "empty"
+        async def nothing(data, content_type, language="en-IN"):
+            return [], 1
+        monkeypatch.setattr(index.ocr, "read", nothing)
         e = (await c.post("/files", files={"file": ("blank.pdf", make_pdf([""]))}, headers=h)).json()
         assert (await settled(c, h, e["id"]))["index_status"] == "empty"
 

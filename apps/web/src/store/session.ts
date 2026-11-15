@@ -5,6 +5,7 @@ import type {
   Citation,
   ConsentPurpose,
   ConsentRequiredEvent,
+  FinancialWorkflowCard,
   HandoffReason,
   ReplyKind,
   Stage,
@@ -24,6 +25,9 @@ export interface ConsentInfo {
   version?: string;
   at?: number;
 }
+
+/** Cards the app can render. The financial workflow has no UI yet; its reply text explains the next step. */
+export type ShownCard = Exclude<Card, FinancialWorkflowCard>;
 
 export type TimelineItem =
   | { id: string; kind: "user"; text: string }
@@ -47,7 +51,7 @@ export type TimelineItem =
     }
   /** A message from the person (executive) handling the conversation. */
   | { id: string; kind: "agent"; name: string; text: string }
-  | { id: string; kind: "card"; card: Card; traceId: string }
+  | { id: string; kind: "card"; card: ShownCard; traceId: string }
   /** Inline consent request (needs analysis is asked in the conversation, not in a sheet). */
   | { id: string; kind: "consent"; prompt: ConsentRequiredEvent; answered: boolean | null }
   | { id: string; kind: "system"; icon: string; text: StringKey; tone?: "success" | "muted"; vars?: Record<string, string | number> }
@@ -106,6 +110,7 @@ export const initialSession: SessionState = {
   consent: {
     conversation: { state: "unknown" }, needs_analysis: { state: "unknown" }, memory: { state: "unknown" },
     documents: { state: "unknown" }, document_analysis: { state: "unknown" }, conversation_records: { state: "unknown" },
+    video_kyc: { state: "unknown" }, financial_application: { state: "unknown" }, credit_bureau: { state: "unknown" },
   },
   consentPrompt: null,
   declined: false,

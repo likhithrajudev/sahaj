@@ -22,7 +22,7 @@ def issue_access(user: User) -> Tuple[str, int]:
     """(token, seconds until it expires)."""
     now = int(time.time())
     ttl = config.ACCESS_TOKEN_MINUTES * 60
-    claims = {"iss": config.JWT_ISSUER, "aud": AUDIENCE, "sub": user.id, "role": user.role, "platform": user.platform,
+    claims = {"iss": config.JWT_ISSUER, "aud": AUDIENCE, "sub": user.id, "tid": user.tenant_id, "role": user.role, "platform": user.platform,
               "type": "access", "iat": now, "exp": now + ttl, "jti": uuid.uuid4().hex}
     return jwt.encode(claims, _secret(), algorithm=ALGORITHM), ttl
 
@@ -30,7 +30,7 @@ def issue_access(user: User) -> Tuple[str, int]:
 def decode_access(token: str) -> dict:
     try:
         claims = jwt.decode(token, _secret(), algorithms=[ALGORITHM], audience=AUDIENCE, issuer=config.JWT_ISSUER,
-                            options={"require": ["exp", "iat", "sub", "iss", "aud"]})
+                            options={"require": ["exp", "iat", "sub", "iss", "aud", "tid"]})
     except jwt.PyJWTError as e:
         raise InvalidToken(str(e)) from e
     if claims.get("type") != "access":

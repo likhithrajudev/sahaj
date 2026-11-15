@@ -242,7 +242,7 @@ def test_verification_levels(kwargs, level):
 def test_suggestions():
     assert len(suggest.for_intent("insurance_explain", "en-IN", "answer", False)) == 3
     assert suggest.for_intent("insurance_explain", "hi-IN", "answer", False)[0] != suggest.for_intent("insurance_explain", "en-IN", "answer", False)[0]
-    assert suggest.for_intent("insurance_explain", "ta-IN", "answer", False)[0].startswith("Which")   # falls back to English
+    assert suggest.for_intent("insurance_explain", "ta-IN", "answer", False) == suggest.SUGGESTIONS["insurance_explain"]["en-IN"]   # falls back to English
     assert suggest.for_intent("insurance_explain", "en-IN", "ask", False) == []        # a question is pending
     assert suggest.for_intent("insurance_explain", "en-IN", "answer", True) == []      # a person has taken over
     assert suggest.for_intent("something_new", "en-IN", "answer", False) == suggest.SUGGESTIONS["greeting"]["en-IN"]

@@ -119,6 +119,8 @@ importers:
 
   packages/contracts: {}
 
+  packages/sdk: {}
+
 packages:
 
   '@apideck/better-ajv-errors@0.3.7':

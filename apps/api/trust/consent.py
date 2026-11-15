@@ -48,12 +48,14 @@ PURPOSES = {
         ),
     },
     "document_analysis": {
-        "version": "2026-11-draft-1",
+        "version": "2026-11-draft-2",
         "text": (
-            "Sahaj can read the PDFs you upload so it can answer questions about them, such as your loan offer or policy. "
-            "Personal identifiers such as PAN, Aadhaar, phone numbers and account numbers are masked before anything is "
-            "stored or sent to the AI. Answers quote the page they came from. Only you can use your documents, and "
-            "withdrawing consent removes what Sahaj learned from them."
+            "Sahaj can read the documents you upload, such as a loan offer, a policy or photos of hospital bills, so it can "
+            "answer questions about them. Text PDFs are read on our own servers. Scanned PDFs and photos are read by Sarvam "
+            "AI's document reading service in India, which sees the page as it is. Personal identifiers such as PAN, "
+            "Aadhaar, phone and account numbers are then masked before anything is stored or used to answer. Answers quote "
+            "the page they came from. Only you can use your documents, and withdrawing consent removes what Sahaj learned "
+            "from them."
         ),
     },
     "conversation_records": {
@@ -73,6 +75,25 @@ PURPOSES = {
             "You can withdraw consent at any time."
         ),
     },
+    "financial_application": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "When I ask, Sahaj may send the application details I provide to the lender or insurer I select, to request "
+            "an offer or process that application. The selected provider makes eligibility, underwriting and approval "
+            "decisions. Sahaj does not take payment or issue a policy or loan. I will review the final terms and confirm "
+            "before an application or purchase is submitted. Withdrawing stops future sharing; it cannot recall data "
+            "already sent to a provider."
+        ),
+    },
+    "credit_bureau": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "At my request, Sahaj may send the identity details I provide to its configured, authorised TransUnion CIBIL "
+            "or credit-bureau partner to retrieve my credit score for the loan application I am considering. I will "
+            "review and confirm each bureau request. Sahaj does not store my score or credit report. The bureau and its "
+            "partner may process the request under their own terms."
+        ),
+    },
 }
 
 
@@ -89,12 +110,17 @@ META = {
                "withdrawal": "Everything Sahaj remembers about you is erased."},
     "documents": {"title": "Store my documents", "required": False, "requires": None, "ttl_days": 365,
                   "withdrawal": "Every file you uploaded is deleted."},
-    "document_analysis": {"title": "Read my PDFs to answer questions", "required": False, "requires": "documents", "ttl_days": 365,
+    "document_analysis": {"title": "Read my documents and photos to answer questions", "required": False, "requires": "documents", "ttl_days": 365,
                           "withdrawal": "What Sahaj learned from your documents is erased. The files stay."},
     "conversation_records": {"title": "Keep my voice recordings and transcripts", "required": False, "requires": "conversation",
                              "ttl_days": 365, "withdrawal": "Every stored recording and transcript is deleted."},
     "video_kyc": {"title": "Video identity verification", "required": False, "requires": None, "ttl_days": 365,
                   "withdrawal": "Your verification session data is deleted."},
+    "financial_application": {"title": "Share details for an insurance or loan request", "required": False,
+                              "requires": "conversation", "ttl_days": 1,
+                              "withdrawal": "Sahaj stops sending new application details. Data already sent must be handled with the provider."},
+    "credit_bureau": {"title": "Request my credit score", "required": False, "requires": "conversation", "ttl_days": 1,
+                      "withdrawal": "Sahaj stops making new bureau requests. A request already sent cannot be recalled."},
 }
 assert set(META) == set(PURPOSES), "every purpose needs presentation metadata"
 

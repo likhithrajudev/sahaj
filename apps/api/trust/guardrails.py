@@ -111,3 +111,33 @@ def check_reply(reply: str, sources: Dict[str, str], allow_recommendation: bool 
         if not re.search(rf"(?<![\d.]){re.escape(number)}(?!\d)", evidence):
             return "ungrounded_number"
     return None
+
+
+_WORD = re.compile(r"[^\W\d_]{3,}|\d[\d.,]*", re.UNICODE)
+_COMMON = {"the", "and", "for", "are", "with", "that", "this", "from", "has", "have", "not", "any", "all", "can", "its",
+           "per", "will", "may", "such", "only", "also", "your", "you", "they", "their", "which", "when", "than", "more"}
+
+
+def _words(text: str) -> set:
+    return {w.lower() for w in _WORD.findall(normalise_digits(text)) if w.lower() not in _COMMON}
+
+
+def repair_citations(reply: str, sources: Dict[str, str], min_overlap: float = 0.6, margin: float = 0.2) -> tuple:
+    """Fix tags that point at the wrong clause. For each statement, if another source clearly contains it (at least
+    `min_overlap` of its words, and `margin` more than the cited one), the tag is changed to that source. Only a clear
+    winner moves a tag; a statement in another language (which shares few words with English clauses) is left as it
+    is, and the fact-check still decides whether the reply is grounded. Returns (reply, number of tags changed)."""
+    words = {key: _words(text) for key, text in sources.items()}
+    out, start, changed = [], 0, 0
+    for m in CITE.finditer(reply):
+        statement, tag = reply[start:m.start()], m.group(1)
+        sentence_words = _words(strip_citations(statement.split("]")[-1]))
+        if sentence_words and tag in words:
+            score = lambda key: len(sentence_words & words[key]) / len(sentence_words)
+            best = max(words, key=score)
+            if best != tag and score(best) >= min_overlap and score(best) - score(tag) >= margin:
+                tag, changed = best, changed + 1
+        out.append(statement + f"[{tag}]")
+        start = m.end()
+    out.append(reply[start:])
+    return "".join(out), changed

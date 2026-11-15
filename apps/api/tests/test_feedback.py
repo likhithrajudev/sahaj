@@ -40,6 +40,8 @@ async def with_app(scenario, monkeypatch):
     await pool.open(wait=True)
     monkeypatch.setattr(rag_store, "_pool", pool)
     await store.init_schema()
+    from tests.dbsetup import init_all
+    await init_all()
     await files.init_schema()
     await feedback.init_schema()
     async with pool.connection() as conn:

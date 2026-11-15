@@ -157,6 +157,7 @@ function handleEvent(e: ServerEvent) {
       break;
 
     case "card":
+      if (e.card.type === "financial_workflow") break;
       pushItem({ kind: "card", card: e.card, traceId: e.trace_id });
       if (useUi.getState().panelItemId) useUi.setState({ panelItemId: null }); // panel follows the newest card
       break;

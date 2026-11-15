@@ -26,7 +26,7 @@ from agents.base import BRIEF, COMPARE, DEEP, generate
 from loan.flow import LoanCalc
 from orchestrator.intent import Intent, classify as classify_intent
 from orchestrator.turn import Turn
-from rag.loader import concept_docs
+from rag.loader import concept_docs, product_docs
 from rag.retrieve import retrieve
 from services import cache, telemetry
 from trust import consent, guardrails
@@ -36,20 +36,24 @@ NEED_CONSENT = {"en-IN": "Before I ask about your details, I need your permissio
 ASK_FALLBACK = {"en-IN": "Sorry, could you say that again?", "hi-IN": "माफ़ कीजिए, क्या आप दोबारा बता सकते हैं?"}
 DECLINE = {
     "loan_rates_comparison": {
-        "en-IN": "I don't have current interest rates from banks, so I can't compare lenders or say whether a loan will be approved. I can explain what your loan offer says, work out an EMI, or connect you to a person.",
-        "hi-IN": "मेरे पास बैंकों की मौजूदा ब्याज दरें नहीं हैं, इसलिए मैं बैंकों की तुलना नहीं कर सकता और न यह बता सकता हूँ कि लोन मंज़ूर होगा या नहीं। मैं आपके लोन ऑफ़र की शर्तें समझा सकता हूँ, ईएमआई निकाल सकता हूँ, या आपको किसी व्यक्ति से जोड़ सकता हूँ।"},
+        "en-IN": "Only the lender can decide whether to approve a loan. I can look up published lender terms, explain your offer, or work out an EMI.",
+        "hi-IN": "लोन मंज़ूर करने का फैसला केवल ऋणदाता कर सकता है। मैं ऋणदाताओं की प्रकाशित शर्तें खोज सकता हूँ, आपके ऑफ़र को समझा सकता हूँ या ईएमआई निकाल सकता हूँ।"},
     "out_of_scope": {
         "en-IN": "I can only help with insurance and loans. I can explain policies, compare and recommend insurance plans, explain a loan offer or work out an EMI, or connect you to a person.",
         "hi-IN": "मैं केवल बीमा और लोन में मदद कर सकता हूँ। मैं पॉलिसी समझा सकता हूँ, बीमा योजनाओं की तुलना और सिफ़ारिश कर सकता हूँ, लोन ऑफ़र समझा सकता हूँ या ईएमआई निकाल सकता हूँ, या आपको किसी व्यक्ति से जोड़ सकता हूँ।"},
 }
 DECLINE_INSTRUCTION = {
-    "loan_rates_comparison": "tell the user you do not have current bank interest rates, so you cannot compare lenders or say whether a loan will be approved, and offer to explain their loan offer, work out an EMI or connect them to a person",
+    "loan_rates_comparison": "say only the lender decides loan approval, and offer to search published lender terms, explain their loan offer or work out an EMI",
     "out_of_scope": "tell the user you can only help with insurance and loans, and offer to explain policies, recommend insurance, explain a loan offer, work out an EMI or connect them to a person",
 }
 ROUTES = {
     "insurance_explain": "insurance_rag", "insurance_advice": "advice", "insurance_compare": "compare",
     "loan_explain": "loan_rag", "loan_guidance": "loan_rag", "loan_calculator": "calculator",
     "loan_rates_comparison": "decline", "out_of_scope": "decline", "human_handoff": "handoff", "greeting": "greeting",
+    "insurance_fine_print": "fine_print", "loan_fine_print": "fine_print",
+    "insurance_web_search": "insurance_web_search",
+    "loan_web_search": "loan_web_search",
+    "insurance_purchase": "financial_action", "loan_application": "financial_action", "credit_check": "financial_action",
 }
 
 
@@ -173,13 +177,17 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
     sources = {h["key"]: h["text"] for h in hits}
     trace.add("retrieval", scoped_to=scope, clauses=[
         {"key": h["key"], "similarity": round(h["similarity"], 4), "sha256": h["sha256"]} for h in hits])
+    if not hits and state["intent"].intent in ("insurance_explain", "loan_guidance"):
+        trace.add("knowledge_fallback", provider="firecrawl", domain=domain)
+        return await _web_search_turn(state, config, domain)
 
     previous = _previous(session)
     in_flow = bool(session.flow and session.flow.active)
     # A reply shaped by someone's memory is theirs alone, so it neither reads from nor goes into the shared cache.
     cacheable = (config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text, previous) and bool(sources)
                  and not session.memory and not any(h.get("personal") for h in hits))
-    key = (domain, " ".join(text.lower().split()), (previous or "").lower(), language, deep,
+    import tenancy
+    key = (tenancy.get(), domain, " ".join(text.lower().split()), (previous or "").lower(), language, deep,
            tuple(sorted((h["key"], h["sha256"]) for h in hits))) if cacheable else None  # clause hashes: edits invalidate
 
     if key is not None:
@@ -240,6 +248,130 @@ async def compare(state: State, config: RunnableConfig):
     reply = await generate("insurance assistant", result["facts"], text, _previous(session), language, COMPARE)
     return {"turn": Turn(text=session.vault.mask(reply), kind="compare", agent="insurance", sources=result["facts"],
                          detailed=True, asked=text, card=result["card"])}
+
+
+FINE_PRINT_SOURCES = 8    # clauses given to the model: enough for the costliest catches; more made it mix up the tags
+
+
+@node
+async def fine_print(state: State, config: RunnableConfig):
+    """The hidden terms and costs, for insurance or a loan. Each topic on the checklist (procedural memory) is looked up
+    in the person's own documents, the plan or offer being discussed, and the general explanations; the answer states
+    what applies, cited, most costly first. The checklist's topics never change between people, so their embeddings
+    come from the cache after the first time: the lookups cost no API calls."""
+    import config as settings   # `config` is this node's LangGraph run config, not the settings module
+    from memory import procedural
+    from rag import store
+    from rag.embeddings import embed_queries
+    session, trace = _ctx(config)
+    domain = "loan" if state["intent"].intent == "loan_fine_print" else "insurance"
+    session.agent = domain
+    topics = [t.strip() for t in procedural.text(f"fine_print.checklist.{domain}").splitlines() if t.strip()]
+    named = catalogue.find_in_text(state["text"]) or session.focus if domain == "insurance" else product_docs("loan")
+    user_id = await _document_user(session)
+    best: Dict[str, dict] = {}
+    per_topic = []
+    for topic, vector in zip(topics, await embed_queries(topics)):
+        found = await store.search(domain, vector, 1, concept_docs(domain))
+        if named:
+            found += await store.search(domain, vector, 1, named)
+        if user_id:
+            from storage import index
+            found += await index.search(user_id, vector, 1)
+        kept = [h for h in found if h["similarity"] >= settings.RETRIEVAL_MIN_SIMILARITY]
+        per_topic.append({"topic": topic, "sources": [h["key"] for h in kept]})
+        for h in kept:
+            if h["similarity"] > best.get(h["key"], {}).get("similarity", 0):
+                best[h["key"]] = h
+    # The person's own and the product's clauses before the general ones, then by relevance.
+    ranked = sorted(best.values(), key=lambda h: (h["key"].split(":")[0].startswith("concepts-"), -h["similarity"]))[:FINE_PRINT_SOURCES]
+    sources = {h["key"]: h["text"] for h in ranked}
+    trace.add("retrieval", scoped_to=["fine_print", domain], clauses=[
+        {"key": h["key"], "similarity": round(h["similarity"], 4), "sha256": h.get("sha256", "")} for h in ranked])
+    reply = await generate(AGENTS[domain].role, sources, state["text"], None, state["language"],
+                           procedural.text("answer.fine_print"), memory=session.memory)
+    reply, repaired = guardrails.repair_citations(reply, sources)   # a statement tagged with a neighbouring clause
+    if repaired:
+        trace.add("citations_repaired", count=repaired)
+    card = {"domain": domain, "topics": [{**t, "sources": [k for k in t["sources"] if k in sources]} for t in per_topic]}
+    return {"turn": Turn(text=session.vault.mask(reply), kind="fine_print", agent=domain, sources=sources, judge=bool(sources),
+                         detailed=True, asked=state["text"], card=card)}
+
+
+async def _web_search_turn(state: State, run_config: RunnableConfig, domain: str) -> Turn:
+    from services.firecrawl import FirecrawlError, FirecrawlUnavailable, search_web, sources_for
+    session, trace = _ctx(run_config)
+    agent = "loan" if domain == "loan" else "insurance"
+    session.agent = agent
+    query = (state["intent"].search or "").strip() or state["text"]
+    try:
+        result = await search_web(query, domain)
+    except (FirecrawlError, FirecrawlUnavailable):
+        trace.add("web_search", provider="firecrawl", domain=domain, status="unavailable")
+        reply = await phrase("Say that current public web search is unavailable right now and ask the user to try again later",
+                             state["language"])
+        return Turn(text=reply, kind="answer", agent=agent, judge=False)
+    sources = sources_for(result["results"])
+    trace.add("web_search", provider="firecrawl", domain=domain, status="ok", query=result["query"], results=len(sources))
+    if not sources:
+        reply = await phrase("Say that no useful current pages were found and ask the user to narrow the search", state["language"])
+        return Turn(text=reply, kind="answer", agent=agent, judge=False)
+    reply = await generate(f"{domain} research assistant", sources, state["text"], _previous(session),
+                           state["language"], DEEP if state["intent"].deep else BRIEF,
+                           purpose="web_search", memory=session.memory)
+    if not guardrails.citations(reply):
+        first = next(iter(sources))
+        reply = f"I found current {domain} pages about this topic. [{first}]"
+    reply, repaired = guardrails.repair_citations(reply, sources)
+    if repaired:
+        trace.add("citations_repaired", count=repaired)
+    return Turn(text=session.vault.mask(reply), kind="answer", agent=agent, sources=sources,
+                judge=True, detailed=state["intent"].deep, asked=state["text"])
+
+
+@node
+async def insurance_web_search(state: State, config: RunnableConfig):
+    return {"turn": await _web_search_turn(state, config, "insurance")}
+
+
+@node
+async def loan_web_search(state: State, config: RunnableConfig):
+    return {"turn": await _web_search_turn(state, config, "loan")}
+
+
+@node
+async def financial_action(state: State, config: RunnableConfig):
+    from financial import providers
+    from trust import consent
+
+    session, trace = _ctx(config)
+    intent = state["intent"].intent
+    if intent == "insurance_purchase":
+        kind, capabilities, endpoints, purpose, agent = (
+            "insurance_purchase", {"insurance_quotes", "insurance_purchase"},
+            ["/financial/insurance/quotes", "/financial/insurance/purchase"],
+            "financial_application", "insurance")
+    elif intent == "credit_check":
+        kind, capabilities, endpoints, purpose, agent = (
+            "credit_check", {"credit_check"}, ["/financial/credit-check"], "credit_bureau", "loan")
+    else:
+        kind, capabilities, endpoints, purpose, agent = (
+            "loan_application", {"credit_check", "loan_offers", "loan_apply"},
+            ["/financial/credit-check", "/financial/loan/offers", "/financial/loan/apply"],
+            "financial_application", "loan")
+    available = [p["id"] for p in providers.capabilities() if capabilities.issubset(set(p["capabilities"]))]
+    trace.add("financial_workflow", kind=kind, providers=len(available))
+    if not available:
+        instruction = (f"say the {kind.replace('_', ' ')} process is not connected to an authorised provider yet; "
+                       "do not ask the person to send identity, income or health details; offer to explain the process")
+    else:
+        instruction = (f"say you can start the {kind.replace('_', ' ')} process through the configured provider; "
+                       "explain that the user must review the provider, details and disclosures and explicitly confirm; "
+                       "for a credit check, explain that a bureau score does not decide loan approval")
+    reply = await phrase(instruction, state["language"])
+    card = {"type": "financial_workflow", "action": kind, "providers": available, "endpoints": endpoints,
+            "consent": consent.required(purpose), "requires_user_confirmation": True}
+    return {"turn": Turn(text=reply, kind="ask", agent=agent, judge=False, card=card)}
 
 
 @node
@@ -306,12 +438,12 @@ async def guard(state: State, config: RunnableConfig):
 def build() -> StateGraph:
     graph = StateGraph(State)
     for fn in (continue_active, classify, insurance_rag, advice, compare, loan_rag, calculator, decline,
-               greeting, clarify, handoff, guard):
+               greeting, clarify, handoff, guard, fine_print, insurance_web_search, loan_web_search, financial_action):
         graph.add_node(fn.__name__, fn)
     graph.add_edge(START, "continue_active")
     graph.add_conditional_edges("continue_active", after_continue, {"guard": "guard", "classify": "classify"})
     graph.add_conditional_edges("classify", route, {name: name for name in set(ROUTES.values()) | {"clarify"}})
-    for name in ("insurance_rag", "advice", "compare", "loan_rag", "calculator", "decline", "greeting", "clarify"):
+    for name in ("insurance_rag", "advice", "compare", "loan_rag", "calculator", "decline", "greeting", "clarify", "fine_print", "insurance_web_search", "loan_web_search", "financial_action"):
         graph.add_edge(name, "guard")
     graph.add_edge("handoff", END)
     graph.add_edge("guard", END)

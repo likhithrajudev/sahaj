@@ -165,7 +165,7 @@ async def desk_socket(ws: WebSocket):
         return await ws.close(code=UNAUTHORIZED, reason="Sign in first.")
     if user.role not in ("executive", "admin"):
         return await ws.close(code=FORBIDDEN, reason="For customer executives only.")
-    live.executives.setdefault(user.id, set()).add(ws)
+    live.join_executive(user.tenant_id, user.id, ws)
     try:
         await ws.send_json({"type": "queue", "items": [_card(c) for c in await desk.queue("all", user.id)], "stats": await desk.stats()})
         while True:
@@ -173,7 +173,7 @@ async def desk_socket(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        live.executives.get(user.id, set()).discard(ws)
+        live.leave_executive(user.tenant_id, user.id, ws)
 
 
 # ---------------------------------------------------------------- customers

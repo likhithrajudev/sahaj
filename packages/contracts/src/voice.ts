@@ -14,7 +14,8 @@ import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
 export type ConsentPurpose =
-  | "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records";
+  | "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records"
+  | "video_kyc" | "financial_application" | "credit_bureau";
 /** "advice" is the needs-analysis / recommendation flow. */
 export type AgentName = "insurance" | "loan" | "general" | "advice";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
@@ -45,7 +46,7 @@ export interface Citation {
 }
 
 /** What produced an assistant message. */
-export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc";
+export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc" | "command";
 
 // ---------------------------------------------------------------- client -> server
 // Audio: send one complete recording (max 30 s; WebM or Safari's MP4, detected server-side) as a binary frame,
@@ -82,6 +83,9 @@ export interface TextMessage {
 
 export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
 
+/** Stream endpoint controls. Audio arrives in binary WebSocket frames until audio_end or audio_cancel. */
+export type VoiceStreamControl = { type: "audio_end" } | { type: "audio_cancel" };
+
 // ---------------------------------------------------------------- server -> client
 // Binary frames are MP3 chunks of the spoken answer; join them in order and play on `done`.
 
@@ -93,6 +97,8 @@ export interface SessionEvent {
   memory: boolean;
   /** A person is already handling this customer: carry on with them. */
   case: CaseView | null;
+  /** True when this conversation was restored from a saved one rather than started fresh. */
+  resumed: boolean;
   /** Which consents the account already has (they carry over between conversations and devices). */
   consents: Partial<Record<ConsentPurpose | "video_kyc", boolean>>;
 }
@@ -323,11 +329,21 @@ export type LoanCalculationCard =
   | { type: "loan_calculation"; kind: "emi"; inputs: LoanInputs; result: EmiResult }
   | { type: "loan_calculation"; kind: "prepayment"; inputs: LoanInputs & { prepay_amount: number }; result: PrepaymentResult };
 
-export type Card = ProfileSummaryCard | RecommendationCard | ComparisonCard | LoanCalculationCard;
+/** Arrives with kind "ask": the user must review the provider and consent before anything is submitted. */
+export interface FinancialWorkflowCard {
+  type: "financial_workflow";
+  action: "insurance_purchase" | "loan_application" | "credit_check";
+  providers: string[];
+  endpoints: string[];
+  consent: { purpose: ConsentPurpose; title: string; version: string; text: string; [key: string]: unknown };
+  requires_user_confirmation: true;
+}
+
+export type Card = ProfileSummaryCard | RecommendationCard | ComparisonCard | LoanCalculationCard | FinancialWorkflowCard;
 export type CardType = Card["type"];
 
 /** The turn kind that produced the card. Prefer `card.type` for rendering. */
-export type TurnKind = "confirm" | "recommendation" | "compare" | "calc";
+export type TurnKind = "confirm" | "recommendation" | "compare" | "calc" | "ask";
 
 export interface CardEvent {
   type: "card";

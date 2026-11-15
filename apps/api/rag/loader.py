@@ -29,3 +29,8 @@ def domains() -> List[str]:
 def concept_docs(domain: str) -> List[str]:
     """Documents of general explanations (concepts-*.md), as opposed to the wording of one particular plan."""
     return [p.stem for p in sorted((KNOWLEDGE / domain).glob("concepts-*.md"))]
+
+
+def product_docs(domain: str) -> List[str]:
+    """The documents of actual products (plan wordings, a lender's Key Facts Statement), as opposed to explanations."""
+    return [p.stem for p in sorted((KNOWLEDGE / domain).glob("*.md")) if not p.stem.startswith("concepts-")]

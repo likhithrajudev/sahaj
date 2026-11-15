@@ -13,13 +13,15 @@ from gateway.middleware import client_ip
 from routers.consents import fail
 from storage import files as file_store
 from trust import consent, consents, ledger
+from services.tts import SUPPORTED_LANGUAGES
 
 router = APIRouter(tags=["Users"])
 
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    language: Optional[str] = Field(None, pattern=r"^[a-z]{2}-IN$", description="For example en-IN, hi-IN")
+    language: Optional[str] = Field(None, pattern=rf"^(?:{'|'.join(SUPPORTED_LANGUAGES)})$",
+                                    description="Supported Indian language tag, for example en-IN, hi-IN or mai-IN")
     platform: Optional[Literal["web", "android", "ios"]] = None
 
 
@@ -37,6 +39,14 @@ class RoleUpdate(BaseModel):
 @router.get("/users/me")
 async def me(user: store.User = Depends(current_user)):
     return {**user.public(), "memory_consent": consent.is_active(user.subject, "memory")}
+
+
+@router.get("/languages")
+async def supported_languages():
+    from services.tts import BORROWED, VOICES
+    return {"items": [{"code": code, "name": name, "speech_output": code in VOICES,
+                       "speech_output_borrowed": code in BORROWED and BORROWED[code][1] is not None}
+                      for code, name in SUPPORTED_LANGUAGES.items()]}
 
 
 @router.patch("/users/me")
@@ -59,10 +69,13 @@ async def delete_me(request: Request, user: store.User = Depends(current_user)):
 async def export_my_data(user: store.User = Depends(current_user)):
     """Everything Sahaj holds about the person, as one JSON download: profile, consent history, memory, the list of
     stored files (download each from /files/{id}) and the ratings they gave."""
+    from memory import episodic
     consents = [{"purpose": e["payload"]["purpose"], "event": e["payload"]["event"], "version": e["payload"]["version"],
                  "recorded_at": e["created_at"]} for e in ledger.entries(subject=user.subject, kind="consent")]
     data = {"exported_at": time.time(), "profile": user.public(), "consents": consents,
-            "memory": await memory_store.all_for(user.id), "files": await file_store.list_for(user.id),
+            "memory": [{k: v for k, v in m.items() if k != "embedding"} for m in await memory_store.all_for(user.id)],
+            "conversations": await episodic.list_for(user.id, 500),
+            "files": await file_store.list_for(user.id),
             "feedback": await feedback_store.for_user(user.id),
             "note": "Conversation audit records are kept without your identity (they carry a random session id only)."}
     return JSONResponse(jsonable_encoder(data), headers={"Content-Disposition": 'attachment; filename="sahaj-my-data.json"'})
@@ -72,8 +85,12 @@ async def export_my_data(user: store.User = Depends(current_user)):
 @router.get("/users/me/memory")
 async def get_memory(user: store.User = Depends(current_user)):
     """Everything Sahaj remembers about the person."""
+    from memory import episodic
+    items = await memory_store.all_for(user.id)
     return {"consent": consent.is_active(user.subject, "memory"), "consent_text": consent.required("memory"),
-            "items": await memory_store.all_for(user.id)}
+            "facts": [{k: v for k, v in i.items() if k != "embedding"} for i in items if i["kind"] == "fact"],
+            "episodes": await episodic.list_for(user.id),
+            "items": [{k: v for k, v in i.items() if k != "embedding"} for i in items]}
 
 
 @router.put("/users/me/memory/consent")
@@ -93,9 +110,18 @@ async def delete_memory_item(memory_id: int, user: store.User = Depends(current_
     return Response(status_code=204)
 
 
+@router.delete("/users/me/memory/episodes/{episode_id}", status_code=204)
+async def delete_episode(episode_id: str, user: store.User = Depends(current_user)):
+    from memory import episodic
+    if not await episodic.delete_one(user.id, episode_id):
+        raise HTTPException(404, "No such conversation in memory.")
+    return Response(status_code=204)
+
+
 @router.delete("/users/me/memory")
 async def delete_memory(user: store.User = Depends(current_user)):
-    return {"erased": await memory_store.delete_all(user.id)}
+    from memory import episodic
+    return {"erased": await memory_store.delete_all(user.id) + await episodic.delete_all(user.id)}
 
 
 # ---------- admin

@@ -8,6 +8,7 @@ apps/
   web/          @sahaj/web        Mobile-first PWA (React + Vite)
 packages/
   contracts/    @sahaj/contracts  Shared TypeScript types for the API / WebSocket protocol
+  sdk/          @sahaj/sdk        Typed Node.js SDK and plugin interfaces for integrations
 docs/                             Product and API docs
 docker-compose.yml                Local Postgres + pgvector
 ```
@@ -49,3 +50,5 @@ For a phone over a tunnel, add the tunnel's https origin to the Google client's 
 - Deploying to Azure or AWS (single container): [`docs/deployment.md`](docs/deployment.md)
 
 When the API protocol changes, update `docs/voice-api.md` and `packages/contracts` together.
+
+Build the SDK with `pnpm --filter @sahaj/sdk build`; it is configured for public scoped npm publishing after build.

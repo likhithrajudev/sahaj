@@ -2,8 +2,8 @@
 `conversation_records` consent. They are registered like any other file, so the person can list, download and delete
 them through /files.
 
-  <username>/voice/<session>/<turn>.<ext>          the audio as the person sent it
-  <username>/transcripts/<session>/<turn>.json     what was said and answered, personal identifiers masked
+  <tenant>/<username>/voice/<session>/<turn>.<ext>          the audio as the person sent it
+  <tenant>/<username>/transcripts/<session>/<turn>.json     what was said and answered, personal identifiers masked
 
 A recording is the person's real voice and is stored exactly as received: that is why it needs its own consent."""
 import json
@@ -23,7 +23,7 @@ def enabled(user: User) -> bool:
 
 
 async def _save(user: User, category: str, ext: str, content_type: str, data: bytes, session_id: str, turn: int, label: str) -> None:
-    name = files.blob_name(user.username, category, ext, group=session_id, stem=f"{turn:04d}")
+    name = files.blob_name(files.folder(user), category, ext, group=session_id, stem=f"{turn:04d}")
     await blob.get().put(name, data, content_type)
     try:
         await files.add(user.id, f"{label}-{session_id[:8]}-{turn:04d}.{ext}", content_type, data, name, category)

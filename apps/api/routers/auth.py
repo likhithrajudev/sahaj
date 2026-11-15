@@ -1,10 +1,13 @@
 from typing import Literal, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import config
+import tenancy
 from auth import google, store, tokens
+from tenancy.db import tenant as load_tenant
 from observability.metrics import AUTH_EVENTS
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -21,6 +24,19 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+async def enter_tenant(request: Request) -> str:
+    """The tenant a sign-in is for: the X-Tenant-ID header (sent by the partner's app), or the default. It must exist and
+    be active. Everything that follows in the request runs as that tenant."""
+    tenant_id = (request.headers.get("x-tenant-id") or config.DEFAULT_TENANT).strip().lower()
+    if not tenancy.valid(tenant_id):
+        raise HTTPException(400, "Invalid X-Tenant-ID.")
+    row = await load_tenant(store.db(), tenant_id)
+    if row is None or row["status"] != "active":
+        raise HTTPException(403, "This organisation is not available.")
+    tenancy.use(tenant_id)
+    return tenant_id
+
+
 async def _session(user: store.User, refresh_token: str) -> dict:
     access, expires_in = tokens.issue_access(user)
     return {"access_token": access, "refresh_token": refresh_token, "token_type": "bearer",
@@ -28,9 +44,11 @@ async def _session(user: store.User, refresh_token: str) -> dict:
 
 
 @router.post("/google")
-async def google_login(body: GoogleLogin):
-    """Exchange a Google ID token for Sahaj tokens. Creates the account on first sign-in."""
+async def google_login(body: GoogleLogin, request: Request):
+    """Exchange a Google ID token for Sahaj tokens. Creates the account on first sign-in, in the tenant named by the
+    X-Tenant-ID header (the same Google account in two tenants is two separate accounts)."""
     tokens._secret()  # fail with 503 before touching Google if signing is not configured
+    await enter_tenant(request)
     try:
         claims = await google.verify_id_token(body.id_token)
     except store.InvalidToken as e:
@@ -44,6 +62,7 @@ async def google_login(body: GoogleLogin):
 @router.post("/refresh")
 async def refresh(body: RefreshRequest):
     """Spend a refresh token for a new access token and a new refresh token. Each refresh token works once."""
+    tenancy.use(store.refresh_tenant(body.refresh_token))
     try:
         user_id, new_refresh, _ = await store.rotate_refresh(body.refresh_token)
     except store.InvalidToken as e:
@@ -59,6 +78,7 @@ async def refresh(body: RefreshRequest):
 @router.post("/logout", status_code=204)
 async def logout(body: RefreshRequest):
     """Sign out this device: the refresh token (and any it was exchanged for) stops working."""
+    tenancy.use(store.refresh_tenant(body.refresh_token))
     await store.revoke_refresh(body.refresh_token)
     return Response(status_code=204)
 
@@ -73,9 +93,12 @@ def dev_login_allowed(request: Request) -> bool:
 
 @router.get("/config")
 async def auth_config(request: Request):
-    """What a client needs to start sign-in: the Google client id (public) and whether the dev login is on."""
+    """What a client needs to start sign-in. This app exchanges a Google ID token, not an OAuth redirect code."""
+    parts = urlsplit(config.PUBLIC_API_URL)
     return {"google_client_id": config.GOOGLE_CLIENT_IDS[0] if config.GOOGLE_CLIENT_IDS else None,
-            "dev_login": dev_login_allowed(request)}
+            "dev_login": dev_login_allowed(request), "api_base_url": config.PUBLIC_API_URL,
+            "google_authorized_origin": f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else None,
+            "google_redirect_uri": None}
 
 
 class DevLogin(BaseModel):
@@ -90,6 +113,7 @@ async def dev_login(body: DevLogin, request: Request):
     if not dev_login_allowed(request):
         raise HTTPException(404, "Not found.")
     tokens._secret()
+    await enter_tenant(request)
     user = await store.upsert_google_user(
         {"sub": f"dev:{body.email.lower()}", "email": body.email.lower(), "name": body.name or body.email.split("@")[0]},
         body.platform)

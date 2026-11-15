@@ -211,9 +211,14 @@ def make_session(monkeypatch, rows=None):
 
     async def delete_all(user_id):
         erased.append(user_id)
+        return 1
+
+    async def no_episodes(user_id):
+        return 0
 
     monkeypatch.setattr(session_module.memory_store, "for_prompt", for_prompt)
     monkeypatch.setattr(session_module.memory_store, "delete_all", delete_all)
+    monkeypatch.setattr("memory.episodic.delete_all", no_episodes)
     return session_module.Session(FakeWS(), USER), erased
 
 
@@ -246,11 +251,11 @@ def test_withdrawing_memory_consent_erases_it(monkeypatch):
 def test_close_remembers_only_with_consent(monkeypatch):
     calls = []
 
-    async def remember(user_id, history):
-        calls.append(user_id)
+    async def remember(session):
+        calls.append(session.user.id)
 
     s, _ = make_session(monkeypatch)
-    monkeypatch.setattr("orchestrator.session.memory.remember", remember)
+    monkeypatch.setattr("orchestrator.session.memory.remember_conversation", remember)
     s.history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
     asyncio.run(s.close())
     assert calls == []
@@ -274,6 +279,8 @@ async def with_app(scenario, monkeypatch):
     await pool.open(wait=True)
     monkeypatch.setattr(rag_store, "_pool", pool)
     await store.init_schema()
+    from tests.dbsetup import init_all
+    await init_all()
     async with pool.connection() as conn:
         await conn.execute("TRUNCATE users CASCADE")
     try:

@@ -102,9 +102,10 @@ export interface StoredFile {
   size_bytes: number;
   sha256: string;
   created_at: string;
-  /** none: not read; indexing; ready: questions can be asked about it; empty: no readable text (a scan);
-   *  unsupported: an image; failed. Only PDFs are read, and only with the document_analysis consent. */
-  index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "failed";
+  /** none: not read; indexing; ready: questions can be asked about it; empty: nothing readable; unsupported: a kind
+   *  that cannot be read (WebP, GIF, audio...); over_budget: the monthly limit is used up; failed. PDFs and photos are
+   *  read (scans and photos by Sarvam OCR), only with the document_analysis consent. */
+  index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "over_budget" | "failed";
   indexed_chunks: number;
 }
 
@@ -145,6 +146,11 @@ export interface ReadyResponse {
   status: "ready";
   storage: "ok" | "down" | "not configured";
   knowledge_base: { ok: boolean; clauses: number; domains?: Record<string, number>; problem?: string };
+  features: { google_sign_in: boolean; insurance_web_search: boolean };
+}
+
+export interface LanguagesResponse {
+  items: SupportedLanguage[];
 }
 
 /** GET /auth/config: what a client needs to start sign-in. */
@@ -152,6 +158,29 @@ export interface AuthConfig {
   google_client_id: string | null;
   /** True only for a local developer: POST /auth/dev {email} then signs in without Google. */
   dev_login: boolean;
+  api_base_url: string;
+  google_authorized_origin: string | null;
+  google_redirect_uri: null;
+}
+
+export interface SupportedLanguage {
+  code: string;
+  name: string;
+  speech_output: boolean;
+  speech_output_borrowed: boolean;
+}
+
+export interface InsuranceSearchRequest {
+  query: string;
+  limit?: number;
+}
+
+export interface InsuranceSearchResponse {
+  query: string;
+  provider: "firecrawl";
+  results_count: number;
+  credits_used: number | null;
+  results: { type: "web" | "news"; title: string; url: string; description: string; content: string }[];
 }
 
 // ---------- Consent ----------
@@ -231,8 +260,10 @@ export interface UsageSummary {
   enforced: boolean;
   model_calls: number;
   tokens: { input: number; output: number; cached_input: number };
+  calls_by_kind: Record<string, number>;
+  units_by_kind: Record<string, number>;
   by_provider: Record<string, number>;
-  by_kind: Record<"llm" | "stt" | "tts", number>;
+  by_kind: Record<"llm" | "stt" | "tts" | "embedding" | "ocr" | "websearch", number>;
   by_purpose: Record<string, number>;
   by_channel: Record<string, number>;
   estimate: true;
@@ -251,6 +282,8 @@ export const API_ROUTES = {
   adminUsers: "/admin/users",
   chatStream: "/chat/stream",
   chat: "/chat",
+  insuranceSearch: "/search/insurance",
+  languages: "/languages",
   consents: "/consents",
   consentsHistory: "/consents/history",
   files: "/files",

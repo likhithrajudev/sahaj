@@ -22,6 +22,8 @@ const TURN_TIMEOUT_MS = 60_000;
  * a muted mic or noise-suppressed silence stays under ~0.005. Kept low so quiet speakers are never blocked.
  */
 const QUIET_PEAK = 0.008;
+/** Practically no signal: the microphone itself is muted, the wrong device, or blocked by the operating system. */
+const MUTED_PEAK = 0.0005;
 let turnTimer: ReturnType<typeof setTimeout> | null = null;
 let dockErrorTimer: ReturnType<typeof setTimeout> | null = null;
 const lastPrompt: Partial<Record<ConsentPurpose, ConsentRequiredEvent>> = {};
@@ -344,10 +346,11 @@ export async function stopTalking() {
     return showDockError("tooShort");
   }
   // Silence isn't sent: speech-to-text tends to "hear" a word in some language in it, which Sahaj would answer.
-  if (import.meta.env.DEV) console.debug(`[sahaj] recording ${recording.size} bytes, peak ${recorder.peak?.toFixed(4) ?? "n/a"}`);
+  if (import.meta.env.DEV) console.info(`[sahaj] recording ${recording.size} bytes, peak ${recorder.peak?.toFixed(4) ?? "n/a"}`);
   if (recorder.peak !== null && recorder.peak < QUIET_PEAK) {
     set({ turn: "idle" });
-    return showDockError("tooQuiet");
+    // No signal at all is a microphone problem (muted, wrong device, or blocked by the OS), not a quiet speaker.
+    return showDockError(recorder.peak < MUTED_PEAK ? "micSilent" : "tooQuiet");
   }
   if (!socket.sendAudio(recording)) {
     set({ turn: "idle" });

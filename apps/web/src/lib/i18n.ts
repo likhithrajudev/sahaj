@@ -94,6 +94,10 @@ const S = {
   tryAgain: ["Try again", "फिर कोशिश करें"],
   didntCatch: ["I didn't catch that. Try speaking a little closer.", "मैं सुन नहीं पाया। थोड़ा पास से बोलकर देखें।"],
   tooShort: ["Hold the button while you speak.", "बोलते समय बटन दबाकर रखें।"],
+  micSilent: [
+    "Your microphone isn't picking up any sound. Check it isn't muted, the right input is selected, and your browser is allowed to use it (on a Mac: System Settings → Privacy & Security → Microphone).",
+    "आपका माइक्रोफ़ोन कोई आवाज़ नहीं ले रहा। देखें कि यह म्यूट न हो, सही इनपुट चुना हो, और ब्राउज़र को अनुमति हो (Mac पर: System Settings → Privacy & Security → Microphone)।",
+  ],
   tooQuiet: ["I couldn't hear anything, so nothing was sent. Try speaking a little closer.", "कुछ सुनाई नहीं दिया, इसलिए कुछ नहीं भेजा। थोड़ा पास से बोलकर देखें।"],
   textOnly: ["Text only in this language", "इस भाषा में सिर्फ़ टेक्स्ट"],
   textOnlyNoAudio: ["Text only in this language · no audio", "इस भाषा में सिर्फ़ टेक्स्ट · ऑडियो नहीं"],

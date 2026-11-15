@@ -39,6 +39,8 @@ export class Recorder {
   private meter: { ctx: AudioContext; raf: number } | null = null;
   /** Loudest sample in this recording (0..1 amplitude), or null when the browser didn't let us measure. */
   peak: number | null = null;
+  /** Name of the input the browser picked for this recording (a virtual device such as BlackHole records silence). */
+  device: string | null = null;
 
   /**
    * Starts recording. Resolves once the mic is live. Call from a pointer/keyboard handler.
@@ -66,6 +68,7 @@ export class Recorder {
     this.parts = [];
     this.cancelled = false;
     this.peak = null;
+    this.device = this.stream.getAudioTracks()[0]?.label || null;
     this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
     this.recorder.ondataavailable = (e) => e.data.size && this.parts.push(e.data);
     this.finished = new Promise((resolve) => {

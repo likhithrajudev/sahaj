@@ -343,7 +343,7 @@ export async function stopTalking() {
     set({ turn: "idle" });
     return showDockError("tooShort");
   }
-  if (import.meta.env.DEV) console.info(`[sahaj] recording ${recording.size} bytes, peak ${recorder.peak?.toFixed(4) ?? "n/a"}`);
+  if (import.meta.env.DEV) console.info(`[sahaj] recording ${recording.size} bytes, peak ${recorder.peak?.toFixed(4) ?? "n/a"}, input "${recorder.device ?? "unknown"}"`);
   // A mic that delivers no signal at all is a device problem; say so instead of sending silence (speech-to-text
   // tends to "hear" a word in silence, which Sahaj would then answer).
   if (recorder.peak !== null && recorder.peak < MUTED_PEAK) {

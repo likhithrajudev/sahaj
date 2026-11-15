@@ -1,5 +1,5 @@
 import { API_ROUTES, WS_UNAUTHORIZED, parseServerEvent, type ClientMessage, type ServerEvent } from "@sahaj/contracts";
-import { accessToken, invalidateAccess } from "@/lib/auth";
+import { accessToken, invalidateAccess, useAuth } from "@/lib/auth";
 
 export type ConnectionStatus = "connecting" | "open" | "reconnecting" | "offline" | "signed_out";
 
@@ -15,7 +15,8 @@ interface Handlers {
  *
  * The server needs an access token. Browsers can't set headers on a WebSocket, so it goes in ?access_token=, fresh
  * for every connection (it is short-lived, which matters because URLs end up in logs). A 4401 close means the token
- * was rejected: refresh once and reconnect; if that fails, the person is signed out.
+ * was rejected: refresh once and reconnect at once, then keep trying with backoff. The socket never ends the session
+ * itself: the person is signed out only when the server refuses the refresh token (see lib/auth.ts).
  *
  * Reconnects with backoff. A new socket is a new server session: the server forgets the conversation (consent and
  * an open case with a person carry over, because they belong to the account).
@@ -49,21 +50,27 @@ export class VoiceSocket {
     const token = await accessToken().finally(() => (this.pending = false));
     if (this.closedByUs || generation !== this.generation || this.ws) return;
     if (!token) {
-      if (!navigator.onLine) return this.handlers.onStatus("offline", { reconnected: false });
-      return this.handlers.onStatus("signed_out", { reconnected: false });
+      // No refresh token left: the server ended the session. Otherwise the refresh just failed for now; try again.
+      if (!useAuth.getState().refreshToken) return this.handlers.onStatus("signed_out", { reconnected: false });
+      this.handlers.onStatus(navigator.onLine ? "reconnecting" : "offline", { reconnected: false });
+      return this.scheduleReconnect();
     }
     const ws = new WebSocket(VoiceSocket.url(token));
     ws.binaryType = "blob";
     this.ws = ws;
 
-    ws.onopen = () => {
-      const reconnected = this.everOpened;
-      this.everOpened = true;
-      this.attempts = 0;
-      this.authRetried = false;
-      this.handlers.onStatus("open", { reconnected });
-    };
+    // The server accepts the handshake before it checks the token, so an open socket proves nothing yet. The
+    // connection counts as open on its first message (the server always starts with `session`).
+    let established = false;
     ws.onmessage = ({ data }) => {
+      if (!established) {
+        established = true;
+        const reconnected = this.everOpened;
+        this.everOpened = true;
+        this.attempts = 0;
+        this.authRetried = false;
+        this.handlers.onStatus("open", { reconnected });
+      }
       if (data instanceof Blob) return this.handlers.onAudio(data);
       const event = parseServerEvent(data as string);
       if (event) this.handlers.onEvent(event);
@@ -74,9 +81,10 @@ export class VoiceSocket {
       if (this.closedByUs) return;
       if (e.code === WS_UNAUTHORIZED) {
         invalidateAccess();
-        if (this.authRetried) return this.handlers.onStatus("signed_out", { reconnected: false });
-        this.authRetried = true; // one fresh token; a second rejection means the session is really over
-        return void this.connect();
+        if (!this.authRetried) {
+          this.authRetried = true; // one fresh token straight away; after that, back off like any other failure
+          return void this.connect();
+        }
       }
       this.handlers.onStatus(navigator.onLine ? "reconnecting" : "offline", { reconnected: false });
       this.scheduleReconnect();

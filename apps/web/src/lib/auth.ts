@@ -28,19 +28,26 @@ function accept(session: AuthSession) {
   useAuth.setState({ user: session.user, refreshToken: session.refresh_token });
 }
 
-export class AuthError extends Error {}
+export class AuthError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!r.ok) {
     const detail = await r.json().catch(() => null);
     const message = typeof detail?.detail === "string" ? detail.detail : detail?.detail?.message;
-    throw new AuthError(message || `Request failed (${r.status})`);
+    throw new AuthError(message || `Request failed (${r.status})`, r.status);
   }
   return r.status === 204 ? (undefined as T) : r.json();
 }
 
-/** A valid access token, refreshing it if it is missing or about to expire. null = signed out. */
+/**
+ * A valid access token, refreshing it if it is missing or about to expire. null = none right now: either signed out
+ * (`useAuth` has no refresh token any more) or the refresh could not be done (network, server restarting); try later.
+ */
 export async function accessToken(): Promise<string | null> {
   if (access && access.expiresAt - Date.now() > 30_000) return access.token;
   return refresh();
@@ -56,8 +63,9 @@ function refresh(): Promise<string | null> {
       return s.access_token;
     })
     .catch((e) => {
-      // A rejected token means the session is over (expired, revoked or reused); a network error is not.
-      if (e instanceof AuthError) signedOut();
+      // Only the server refusing the token (401) ends the session: it expired, was revoked or was reused. A network
+      // error, a rate limit or a server that is restarting (429, 5xx) is temporary: keep the session and try later.
+      if (e instanceof AuthError && e.status === 401) signedOut();
       return null;
     })
     .finally(() => {

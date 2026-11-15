@@ -4,11 +4,11 @@ import { Sheet } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
 import { clean, cn, withRupeeSign } from "@/lib/utils";
 import { useSession } from "@/store/session";
-import { closeSheet, useUi } from "@/store/ui";
+import { closeSheet, useSheet, useUi } from "@/store/ui";
 
 export function CitationSheet() {
   const t = useT();
-  const open = useUi((s) => s.sheet === "citations");
+  const { open } = useSheet("citations");
   const target = useUi((s) => s.citation);
   const item = useSession((s) => s.timeline.find((i) => i.id === target?.itemId));
   const citations = item?.kind === "assistant" ? item.citations : [];
@@ -19,10 +19,10 @@ export function CitationSheet() {
   }, [open, target?.citationId]);
 
   return (
-    <Sheet open={open} onClose={closeSheet} label={t("sources")}>
+    <Sheet name="citations" onClose={closeSheet} label={t("sources")}>
       <div className="flex items-center justify-between">
         <h2 className="text-[22px] font-semibold">{t("sources")} · {citations.length}</h2>
-        <button type="button" aria-label={t("close")} onClick={closeSheet} className="flex size-11 items-center justify-center rounded-xl">
+        <button type="button" aria-label={t("close")} onClick={closeSheet} className="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-surface-2">
           <Icon name="close" />
         </button>
       </div>
@@ -36,7 +36,7 @@ export function CitationSheet() {
           const active = c.id === target?.citationId;
           return (
             <li key={c.id} ref={active ? highlighted : undefined}
-              className={cn("rounded-2xl p-4", active ? "border-[1.5px] border-primary bg-primary-soft" : "bg-bg")}>
+              className={cn("rounded-2xl p-4 transition-colors", active ? "bg-primary-soft ring-[1.5px] ring-primary" : "bg-surface-muted")}>
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <span className={cn("flex size-[22px] items-center justify-center rounded-md text-xs font-bold",
                   active ? "bg-primary text-on-primary" : "bg-surface-2 text-primary")}>{i + 1}</span>

@@ -17,16 +17,16 @@
   --brand-cyan: #00b8f5;
   --brand-action: #004299;
 
-  --bg: #f5f5f5;
+  --bg: #f3f5f9;
   --surface: #ffffff;
-  --surface-2: #ecf2f8;
-  --surface-muted: #f0f3f7;
-  --line: #ebebeb;
-  --line-2: #d5dce5;
+  --surface-2: #ebf1f8;
+  --surface-muted: #f6f8fb;
+  --line: #e4e9f0;
+  --line-2: #d3dbe6;
   --control-line: #aab5c4;
-  --ink: #282828;
-  --ink-2: #414244;
-  --ink-3: #666666;
+  --ink: #1b2333;
+  --ink-2: #444e60;
+  --ink-3: #626c7e;
   --primary: var(--brand-action);
   --primary-strong: var(--brand-navy);
   --primary-soft: color-mix(in srgb, var(--primary) 8%, #ffffff);
@@ -56,9 +56,15 @@
   /* logo (docs/design/logo-1c, colours mapped to the brand tokens) */
   --logo-bar: var(--brand-action);
   --logo-word: var(--brand-navy);
-  --scrim: rgb(40 48 60 / 0.45);
-  --shadow-dock: 0 -10px 28px -18px rgb(40 40 40 / 0.25);
+  --scrim: rgb(16 26 48 / 0.42);
+  --scrim-stacked: rgb(16 26 48 / 0.2);
+  --shadow-dock: 0 -12px 32px -20px rgb(1 42 114 / 0.28);
   --shadow-sheet: 0 -12px 40px -16px rgb(16 24 40 / 0.3);
+  /* Elevation is declared once per theme: a soft offset shadow here, a hairline in dark. */
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -14px rgb(1 42 114 / 0.16);
+  --shadow-raised: 0 2px 6px rgb(16 24 40 / 0.06), 0 22px 44px -20px rgb(1 42 114 / 0.32);
+  --hero: linear-gradient(140deg, var(--brand-action) 0%, #01358c 55%, var(--brand-navy) 100%);
+  --wash: radial-gradient(110% 340px at 50% -80px, color-mix(in srgb, var(--brand-cyan) 16%, transparent), transparent);
   color-scheme: light;
 }
 
@@ -103,6 +109,11 @@
   --logo-bar: #ffffff;
   --logo-word: var(--ink);
   --scrim: rgb(2 8 18 / 0.6);
+  --scrim-stacked: rgb(2 8 18 / 0.35);
+  --shadow-card: 0 0 0 1px #233552;
+  --shadow-raised: 0 0 0 1px #2b3f60, 0 24px 48px -20px rgb(0 0 0 / 0.6);
+  --hero: linear-gradient(140deg, #13448f 0%, #0f3271 55%, #0c2556 100%);
+  --wash: radial-gradient(110% 340px at 50% -80px, color-mix(in srgb, var(--brand-cyan) 10%, transparent), transparent);
   color-scheme: dark;
 }
 
@@ -156,7 +167,9 @@
 
   --shadow-dock: var(--shadow-dock);
   --shadow-sheet: var(--shadow-sheet);
-  --shadow-talk: 0 10px 22px -8px var(--talk-glow);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-talk: 0 12px 26px -10px var(--talk-glow);
 
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -192,6 +205,15 @@
   :focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--brand-cyan) 30%, transparent);
+  }
+  input, textarea {
+    caret-color: var(--primary);
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
   }
   /* Indic and Arabic scripts sit taller: +4px leading (Foundations). */
   :lang(hi), :lang(mr), :lang(ta), :lang(te), :lang(kn), :lang(ml), :lang(bn), :lang(gu), :lang(pa), :lang(or), :lang(ur) {
@@ -239,6 +261,12 @@
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
 
+@utility card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
 /* Thinking: three dots breathe in turn, 1.4 s loop. */
 @keyframes breathe {
   0%, 100% { opacity: 0.25; }
@@ -248,6 +276,27 @@
 .dot-breathe:nth-child(2) { animation-delay: 0.2s; }
 .dot-breathe:nth-child(3) { animation-delay: 0.4s; }
 
+/* The logo's voice bars while Sahaj works: a ripple runs through them, left to right. */
+@keyframes bar-ripple {
+  0%, 100% { height: 36%; }
+  45% { height: 100%; }
+}
+.bar-ripple { animation: bar-ripple 1.15s infinite cubic-bezier(0.45, 0, 0.35, 1); }
+
+/* A live status dot: a ring leaves it while something is in progress. */
+@keyframes ping-soft {
+  0% { transform: scale(1); opacity: 0.55; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.ping-soft { animation: ping-soft 1.8s infinite cubic-bezier(0, 0, 0.2, 1); }
+
+/* Slide-to-cancel hint: the chevron leans the way to slide. */
+@keyframes nudge-left {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-4px); }
+}
+.nudge-left { animation: nudge-left 1.2s infinite ease-in-out; }
+
 @keyframes shimmer {
   0% { opacity: 0.55; }
   50% { opacity: 1; }
@@ -255,8 +304,42 @@
 }
 .skeleton { background: var(--surface-2); animation: shimmer 1.6s infinite; border-radius: 10px; }
 
+/* Sheets (vaul). Leaving is quicker than arriving and accelerates away; the scrim fades with the sheet, never after
+   it. Selectors repeat vaul's attributes to outrank its built-in rules. */
+.sheet[data-vaul-drawer][data-vaul-snap-points=false][data-vaul-drawer-direction=bottom][data-state=closed],
+.sheet-overlay[data-vaul-overlay][data-vaul-snap-points=false][data-state=closed] {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.32, 0, 0.67, 0);
+}
+/* Underneath another sheet: it steps back, and comes forward again when the top one closes. */
+.sheet[data-vaul-drawer] {
+  transform-origin: 50% 0;
+  transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), scale 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sheet[data-behind] { scale: 0.94; filter: brightness(0.92); pointer-events: none; }
+
+/* Wide screens: a centred dialog grows in and fades away where it is, instead of sliding through the bottom edge. */
+@keyframes dialog-in { from { opacity: 0; transform: scale(0.96); } }
+@keyframes dialog-out { to { opacity: 0; transform: scale(0.97); } }
+@media (min-width: 48rem) {
+  .sheet { transform-origin: 50% 50%; }
+  .sheet[data-vaul-drawer][data-vaul-snap-points=false][data-vaul-drawer-direction=bottom][data-state=open] {
+    animation: dialog-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .sheet[data-vaul-drawer][data-vaul-snap-points=false][data-vaul-drawer-direction=bottom][data-state=closed] {
+    animation: dialog-out 0.16s cubic-bezier(0.4, 0, 1, 1);
+  }
+  .sheet-overlay[data-vaul-overlay][data-vaul-snap-points=false][data-state=closed] { animation-duration: 0.16s; }
+  .sheet[data-behind] { scale: 0.96; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .dot-breathe, .skeleton { animation: none; }
+  .sheet[data-vaul-drawer][data-vaul-snap-points=false][data-vaul-drawer-direction=bottom][data-state],
+  .sheet-overlay[data-vaul-overlay][data-vaul-snap-points=false][data-state] { animation-duration: 0.01s; }
+  .sheet[data-vaul-drawer] { transition: none; }
+  .dot-breathe, .skeleton, .ping-soft, .nudge-left { animation: none; }
+  .bar-ripple { animation: breathe 1.6s infinite ease-in-out; height: 70%; }
   .dot-breathe:nth-child(2) { opacity: 0.55; }
   .dot-breathe:nth-child(3) { opacity: 0.25; }
 }

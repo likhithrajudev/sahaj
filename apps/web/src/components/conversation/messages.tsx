@@ -1,6 +1,7 @@
 import type { AgentName } from "@sahaj/contracts";
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
+import { VoiceBars } from "@/components/brand/voice-bars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -8,16 +9,22 @@ import { useT, type StringKey } from "@/lib/i18n";
 import { rateReply, replay, requestHuman, sendSuggestion } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { canTalk, useSession, withPerson, type TimelineItem } from "@/store/session";
-import { useUi } from "@/store/ui";
+import { openSheet } from "@/store/ui";
 
-/** Cards and messages rise 12 px and fade in, 280 ms (Motion foundations). */
-export function Rise({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * How items arrive. What the person said slides in from their side; what Sahaj says comes into focus, from a soft blur,
+ * as if spoken into the room. Reduced motion keeps the fade only.
+ */
+export function Rise({ children, className, from = "sahaj" }: { children: ReactNode; className?: string; from?: "person" | "sahaj" }) {
   const reduce = useReducedMotion();
+  const start = reduce ? { opacity: 0 }
+    : from === "person" ? { opacity: 0, x: 14 }
+    : { opacity: 0, y: 10, filter: "blur(6px)" };
   return (
     <motion.div className={className}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}>
+      initial={start}
+      animate={{ opacity: 1, x: 0, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: from === "person" ? 0.26 : 0.42, ease: [0.16, 1, 0.3, 1] }}>
       {children}
     </motion.div>
   );
@@ -25,7 +32,8 @@ export function Rise({ children, className }: { children: ReactNode; className?:
 
 export function UserBubble({ text, children }: { text?: string; children?: ReactNode }) {
   return (
-    <div dir="auto" className="ml-auto max-w-[85%] rounded-[20px] rounded-br-md bg-bubble px-4 py-3 text-[17px] leading-[25px] text-on-bubble">
+    <div dir="auto" className="ml-auto max-w-[85%] rounded-[22px] rounded-br-md px-4 py-3 text-[17px] leading-[25px] text-on-bubble shadow-card"
+      style={{ background: "linear-gradient(150deg, color-mix(in srgb, var(--bubble) 88%, var(--brand-cyan)), var(--bubble) 60%)" }}>
       {children ?? text}
     </div>
   );
@@ -58,23 +66,23 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
   if (item.fallback) return <FallbackBubble>{children}</FallbackBubble>;
 
   return (
-    <div className="max-w-[92%] rounded-[20px] border border-line bg-surface px-4 pb-3.5 pt-3.5">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="card max-w-[92%] rounded-tl-md px-4 pb-3.5 pt-3.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <AgentBadge agent={item.agent} question={item.replyKind === "ask" && item.agent !== "advice"} />
         <VerificationBadge item={item} />
       </div>
-      <p dir="auto" className="mt-2 text-[17px] leading-[25px]">{children}</p>
+      <p dir="auto" className="mt-2.5 text-[17px] leading-[26px]">{children}</p>
       {item.textOnly && (
         <p className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-info">
           <Icon name="subtitles" size={17} /> {t("textOnlyNoAudio")}
         </p>
       )}
       {isLatest && (item.audioUrl || item.replyKind !== "ask") && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-2.5">
           <Feedback item={item} />
           {item.audioUrl && !speakingThis && (
             <button type="button" onClick={() => replay(item.audioUrl!)} disabled={turn !== "idle"}
-              className="flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3.5 text-[15px] font-semibold text-primary disabled:opacity-50">
+              className="flex h-10 items-center gap-1.5 rounded-full bg-primary-soft px-3.5 text-[15px] font-semibold text-primary transition-[filter] hover:brightness-95 disabled:opacity-50">
               <Icon name="play_arrow" size={20} fill /> {t("replay")}
               {item.audioSeconds ? <span className="font-medium"> · {Math.floor(item.audioSeconds / 60)}:{String(Math.round(item.audioSeconds % 60)).padStart(2, "0")}</span> : null}
             </button>
@@ -101,7 +109,7 @@ function VerificationBadge({ item }: { item: Assistant }) {
   // Tapping the label explains it. The hit area is 44 px tall although the label stays small.
   return (
     <button type="button" aria-label={`${label}. ${t("trustWhat")}`}
-      onClick={() => useUi.setState({ sheet: "trust", trustLevel: level })}
+      onClick={() => openSheet("trust", { trustLevel: level })}
       className="relative inline-flex h-6 items-center gap-1 text-xs font-semibold text-success before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-['']">
       <Icon name={TRUST_ICON[level]} size={15} /> {label}
       <Icon name="info" size={14} className="text-ink-3" />
@@ -117,7 +125,7 @@ function Feedback({ item }: { item: Assistant }) {
       {(["up", "down"] as const).map((r) => (
         <button key={r} type="button" aria-label={t(r === "up" ? "helpful" : "notHelpful")} aria-pressed={item.feedback === r}
           onClick={() => void rateReply(item.id, item.traceId, r)}
-          className={cn("flex size-10 items-center justify-center rounded-xl",
+          className={cn("flex size-10 items-center justify-center rounded-full transition-colors",
             item.feedback === r ? "bg-primary-soft text-primary" : "text-ink-3 hover:bg-surface-2")}>
           <Icon name={r === "up" ? "thumb_up" : "thumb_down"} size={19} fill={item.feedback === r} />
         </button>
@@ -132,14 +140,16 @@ export function Suggestions({ items }: { items: string[] }) {
   const ready = useSession((s) => canTalk(s) && s.turn === "idle");
   if (!items.length || !ready) return null;
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-[13px] font-semibold uppercase tracking-[.08em] text-ink-3">{t("askNext")}</span>
+    <div className="flex flex-col gap-2.5">
+      <span className="text-sm font-semibold text-ink-3">{t("askNext")}</span>
       <div className="flex flex-wrap gap-2">
-        {items.map((s) => (
-          <button key={s} type="button" dir="auto" onClick={() => sendSuggestion(s)}
-            className="rounded-full border border-line-2 bg-surface px-3.5 py-2 text-left text-[15px] leading-5 text-primary hover:bg-primary-soft">
+        {items.map((s, i) => (
+          <motion.button key={s} type="button" dir="auto" onClick={() => sendSuggestion(s)}
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 + i * 0.06, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="card rounded-full px-4 py-2.5 text-left text-[15px] font-medium leading-5 text-primary transition-[background-color,transform] duration-150 hover:bg-primary-soft active:scale-[0.98]">
             {s}
-          </button>
+          </motion.button>
         ))}
       </div>
     </div>
@@ -150,7 +160,7 @@ export function Suggestions({ items }: { items: string[] }) {
 export function AgentMessage({ name, text }: { name: string; text: string }) {
   const t = useT();
   return (
-    <div className="max-w-[92%] rounded-[20px] border border-info/30 bg-info-soft px-4 pb-3.5 pt-3">
+    <div className="max-w-[92%] rounded-[20px] rounded-tl-md bg-info-soft px-4 pb-3.5 pt-3">
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-info">
         <Icon name="support_agent" size={16} /> {name || t("fromTeam")}
       </span>
@@ -164,9 +174,9 @@ function FallbackBubble({ children }: { children: ReactNode }) {
   const t = useT();
   const handoff = useSession(withPerson);
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4">
+    <div className="card flex flex-col gap-3.5 rounded-tl-md p-4">
       <div className="flex gap-3">
-        <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-surface-2 text-primary">
+        <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-primary-soft text-primary">
           <Icon name="find_in_page" />
         </span>
         <p dir="auto" className="text-[17px] leading-[25px]">{children}</p>
@@ -200,7 +210,7 @@ export function SystemNote({ icon, text, tone, vars }: {
 export function ResetNote() {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-1 rounded-[20px] border border-line bg-surface px-4 py-3.5 text-center">
+    <div className="card flex flex-col items-center gap-1 px-4 py-3.5 text-center">
       <span className="flex items-center gap-2 text-[15px] font-semibold">
         <Icon name="restart_alt" size={20} className="text-primary" /> {t("resetTitle")}
       </span>
@@ -213,8 +223,8 @@ export function ResetNote() {
 export function ListeningBubble() {
   const t = useT();
   return (
-    <div className="ml-auto flex h-[52px] items-center gap-2.5 rounded-[20px] border-[1.5px] border-dashed border-primary px-5 text-[17px] text-ink-2">
-      <Icon name="graphic_eq" size={22} className="text-primary" /> {t("listening")}
+    <div className="ml-auto flex h-[52px] items-center gap-3 rounded-[22px] rounded-br-md bg-primary-soft px-5 text-[17px] font-medium text-primary">
+      <VoiceBars mode="listening" height={20} /> {t("listening")}
     </div>
   );
 }
@@ -228,28 +238,33 @@ export function ThinkingBubble() {
   const sending = useSession((s) => s.turn === "sending");
   const steps = history.filter((s) => (STEP_ORDER as readonly string[]).includes(s));
   return (
-    <div className="flex w-fit min-w-[220px] max-w-[80%] flex-col gap-2 rounded-[20px] border border-line bg-surface px-4 py-3.5" aria-live="polite">
-      <div className="flex gap-1.5" aria-hidden>
-        {[0, 1, 2].map((i) => <span key={i} className="dot-breathe size-2 rounded-full bg-primary" />)}
-      </div>
+    <div className="card flex w-fit min-w-[240px] max-w-[80%] flex-col gap-2.5 rounded-tl-md px-4 py-3.5" aria-live="polite">
+      <VoiceBars mode="thinking" height={20} />
       {sending && <span className="text-[15px] text-ink-2">{t("sending")}</span>}
-      {steps.map((step, i) => {
-        const current = i === steps.length - 1;
-        return (
-          <motion.span key={step} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
-            className={cn("flex items-center gap-2 text-[15px]", current ? "font-semibold text-ink" : "text-ink-2")}>
-            {current
-              ? <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
-              : <Icon name="check" size={18} className="text-success" />}
-            {t(`step_${step}` as StringKey)}
-          </motion.span>
-        );
-      })}
+      {steps.length > 0 && (
+        <ol className="relative flex flex-col gap-2 before:absolute before:bottom-2 before:left-[8.5px] before:top-2 before:w-px before:bg-line">
+          {steps.map((step, i) => {
+            const current = i === steps.length - 1;
+            return (
+              <motion.li key={step} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className={cn("relative flex items-center gap-2.5 text-[15px]", current ? "font-semibold text-ink" : "text-ink-2")}>
+                <span className="flex size-[18px] flex-none items-center justify-center rounded-full bg-surface">
+                  {current
+                    ? <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
+                    : <Icon name="check_circle" size={18} fill className="text-success" />}
+                </span>
+                {t(`step_${step}` as StringKey)}
+              </motion.li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }
 
 /** Opens the citations sheet for a message, highlighting one source. */
 export function openCitation(itemId: string, citationId: string) {
-  useUi.setState({ sheet: "citations", citation: { itemId, citationId } });
+  openSheet("citations", { citation: { itemId, citationId } });
 }

@@ -8,7 +8,7 @@ expand_less expand_more family_restroom find_in_page graphic_eq health_and_safet
 install_desktop install_mobile ios_share language light_mode lock menu mic mic_off pause_circle person_check play_arrow
 progress_activity record_voice_over refresh remove_moderator replay restart_alt savings science search_off
 shield_person south stop subtitles support_agent swipe_left sync task_alt timer touch_app translate verified_user
-volume_off volume_up wifi_off thumb_up thumb_down verified logout account_circle"
+volume_off volume_up wifi_off thumb_up thumb_down verified logout account_circle videocam id_card wifi calendar_add_on"
 NAMES=$(echo $ICONS | tr ' ' '\n' | sort -u | paste -sd, -)
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 CSS=$(curl -fsS -A "$UA" "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&icon_names=$NAMES&display=block")

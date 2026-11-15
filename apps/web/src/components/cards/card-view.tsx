@@ -22,14 +22,14 @@ export function CardSummary({ card, itemId }: { card: Card; itemId: string }) {
   const { icon, title, sub } = summarise(card, t);
   return (
     <button type="button" onClick={() => useUi.setState({ panelItemId: itemId, panelOpen: true })}
-      className="flex w-full items-center gap-3.5 rounded-[20px] border-[1.5px] border-primary bg-surface px-4 py-3.5 text-left">
-      <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-surface-2 text-primary"><Icon name={icon} /></span>
+      className="card group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-shadow duration-200 hover:shadow-raised">
+      <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-primary-soft text-primary"><Icon name={icon} /></span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[17px] font-semibold">{title}</span>
         <span className="truncate text-sm text-ink-2">{sub}</span>
       </span>
       <span className="flex flex-none items-center gap-1 text-sm font-semibold text-primary">
-        {t("openInPanel")} <Icon name="arrow_forward" size={18} />
+        {t("openInPanel")} <Icon name="arrow_forward" size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
       </span>
     </button>
   );

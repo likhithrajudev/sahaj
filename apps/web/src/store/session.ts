@@ -111,6 +111,7 @@ export const initialSession: SessionState = {
     conversation: { state: "unknown" }, needs_analysis: { state: "unknown" }, memory: { state: "unknown" },
     documents: { state: "unknown" }, document_analysis: { state: "unknown" }, conversation_records: { state: "unknown" },
     video_kyc: { state: "unknown" }, financial_application: { state: "unknown" }, credit_bureau: { state: "unknown" },
+    financial_profile: { state: "unknown" },
   },
   consentPrompt: null,
   declined: false,
@@ -161,6 +162,10 @@ export const canTalk = (s: SessionState) =>
   !s.consentPrompt &&
   !s.timeline.some((i) => i.kind === "consent" && i.answered === null) &&
   (s.turn === "idle" || s.turn === "speaking");
+
+/** The open case is a video KYC appointment (requested, or booked by the team). */
+export const kycCase = (s: SessionState) =>
+  withPerson(s) && (s.handoff?.case?.kind === "video_kyc" || s.handoff?.reason === "video_kyc") ? s.handoff : null;
 
 /** The most recent card, for the desktop side panel. */
 export const latestCard = (s: SessionState) =>

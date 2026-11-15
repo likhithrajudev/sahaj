@@ -2,12 +2,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useRef, useState } from "react";
 import { CardSummary, CardView } from "@/components/cards/card-view";
 import { HandoffCard, NeedsConsentCard } from "@/components/cards/advice";
+import { KycCard } from "@/components/cards/kyc";
 import { InstallCard } from "@/components/sheets/info-sheets";
 import { Icon } from "@/components/ui/icon";
 import { useIsDesktop } from "@/lib/media";
 import { useT } from "@/lib/i18n";
 import { clean, cn, withRupeeSign } from "@/lib/utils";
-import { canTalk, useSession, type TimelineItem } from "@/store/session";
+import { canTalk, kycCase, useSession, type TimelineItem } from "@/store/session";
 import { RichText } from "./rich-text";
 import {
   AgentMessage, AssistantBubble, ListeningBubble, openCitation, ResetNote, Rise, Suggestions, SystemNote, ThinkingBubble,
@@ -23,6 +24,7 @@ export function Timeline() {
   const working = useSession((s) => (s.turn === "sending" || s.turn === "thinking") && !s.replied);
   const canAsk = useSession((s) => canTalk(s) && s.turn === "idle");
   const handoff = useSession((s) => s.handoff);
+  const kyc = useSession((s) => !!kycCase(s));
   const declined = useSession((s) => s.declined && s.consent.conversation.state !== "granted" && !s.consentPrompt);
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -80,14 +82,19 @@ export function Timeline() {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} className="scrollbar-none h-full overflow-y-auto overscroll-contain">
-        <div ref={content} className={cn("px-gutter mx-auto flex min-h-full max-w-[720px] flex-col gap-3.5 py-4", conversationItems && "justify-end")}>
+        <div ref={content} className={cn("px-gutter mx-auto flex min-h-full max-w-[720px] flex-col gap-4 py-4", conversationItems && "justify-end")}>
           {!conversationItems && <Welcome />}
           {timeline.map((item) => (
-            <Rise key={item.id}><Item item={item} isLatest={item.id === lastAssistant} /></Rise>
+            <Rise key={item.id} from={item.kind === "user" ? "person" : "sahaj"}><Item item={item} isLatest={item.id === lastAssistant} /></Rise>
           ))}
-          {(turn === "recording" || turn === "starting") && <Rise><ListeningBubble /></Rise>}
+          {(turn === "recording" || turn === "starting") && <Rise from="person"><ListeningBubble /></Rise>}
           {working && <Rise><ThinkingBubble /></Rise>}
-          {handoff && <Rise><HandoffCard reference={handoff.reference} reason={handoff.reason} agentName={handoff.agentName} /></Rise>}
+          {handoff && (
+            <Rise>
+              {kyc ? <KycCard handoff={handoff} />
+                : <HandoffCard reference={handoff.reference} reason={handoff.reason} agentName={handoff.agentName} />}
+            </Rise>
+          )}
           {!handoff && canAsk && suggestions.length > 0 && <Rise><Suggestions items={suggestions} /></Rise>}
           {turn === "idle" && !handoff && <InstallCard />}
         </div>
@@ -100,7 +107,7 @@ export function Timeline() {
               setAtBottom(true);
               scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
             }}
-            className="absolute bottom-3 right-4 flex h-11 items-center gap-2 rounded-full bg-toast px-4 text-[15px] font-semibold text-toast-ink shadow-lg">
+            className="absolute bottom-3 left-1/2 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-toast px-4 text-[15px] font-semibold text-toast-ink shadow-raised">
             <Icon name="arrow_downward" size={20} /> {t("jumpLatest")}
           </motion.button>
         )}

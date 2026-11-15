@@ -5,7 +5,7 @@ import { api } from "@/lib/auth";
 import type { StringKey } from "@/lib/i18n";
 import { VoiceSocket } from "@/lib/socket";
 import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson } from "@/store/session";
-import { openSheet, useUi } from "@/store/ui";
+import { closeAllSheets, openSheet, useUi } from "@/store/ui";
 
 /**
  * Side effects of a conversation: the socket, the mic and the speaker. Components read `useSession` and call
@@ -82,6 +82,7 @@ const socket = new VoiceSocket({
 const CONSENT_NOTE: Partial<Record<ConsentPurpose, [StringKey, StringKey]>> = {
   conversation: ["consentGranted", "consentWithdrawn"],
   needs_analysis: ["detailsGranted", "detailsWithdrawn"],
+  video_kyc: ["kycGranted", "kycWithdrawn"],
 };
 
 function handleEvent(e: ServerEvent) {
@@ -108,7 +109,9 @@ function handleEvent(e: ServerEvent) {
         if (get().turn === "thinking" || get().turn === "sending") settle();
       } else {
         // Other permissions (personal details, video KYC…) are asked inside the conversation, as a card.
-        pushItem({ kind: "consent", prompt: e, answered: null });
+        const asking = get().timeline.some((i) => i.kind === "consent" && i.prompt.purpose === e.purpose && i.answered === null);
+        if (!asking) pushItem({ kind: "consent", prompt: e, answered: null });
+        if (e.purpose === "video_kyc") closeAllSheets(); // the card is in the conversation
       }
       break;
 
@@ -209,6 +212,7 @@ function handleEvent(e: ServerEvent) {
       break;
 
     case "video_kyc_scheduled":
+      set((s) => ({ handoff: s.handoff && { ...s.handoff, case: s.handoff.case && { ...s.handoff.case, scheduled_for: e.scheduled_for, meeting_url: e.meeting_url } } }));
       pushItem({ kind: "system", icon: "event_available", text: "kycScheduled", tone: "success",
         vars: { when: new Date(e.scheduled_for).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) } });
       break;
@@ -377,7 +381,8 @@ export function sendSuggestion(text: string) {
 
 /** The mic explainer's Continue: ask the browser for permission now, inside this tap. */
 export async function grantMicFromExplainer() {
-  useUi.setState({ micExplained: true, sheet: null });
+  useUi.setState({ micExplained: true });
+  closeAllSheets();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((t) => t.stop());
@@ -418,6 +423,29 @@ export function requestHuman() {
   if (withPerson(get())) return;
   stopSpeaking();
   socket.send({ type: "handoff" });
+}
+
+/** The consent text the account was last shown for a purpose (loaded with the session), to show before asking. */
+export function consentNotice(purpose: ConsentPurpose): ConsentRequiredEvent | null {
+  return lastPrompt[purpose] ?? null;
+}
+
+/**
+ * Ask the team to book a video KYC appointment. `agreed` means the person accepted the video KYC permission on the
+ * screen they are looking at; without it the server asks for the permission first and books once it is granted.
+ */
+export function requestVideoKyc({ agreed = false, note }: { agreed?: boolean; note?: string } = {}) {
+  stopSpeaking();
+  const prompt = lastPrompt.video_kyc;
+  if (agreed && prompt && get().consent.video_kyc.state !== "granted") {
+    socket.send({ type: "consent", purpose: "video_kyc", granted: true, version: prompt.version });
+  }
+  const text = note?.trim().slice(0, 500);
+  if (!socket.send({ type: "handoff", reason: "video_kyc", ...(text ? { note: text } : {}) })) {
+    showDockError("notConnected");
+    return false;
+  }
+  return true;
 }
 
 /** The person no longer needs the team: the AI answers again. */

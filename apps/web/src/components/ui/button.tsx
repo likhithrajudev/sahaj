@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils";
 
 /** Pill buttons from the design: 52 px primary/outline, 40 px small, text links. */
 const button = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold transition-colors disabled:opacity-50 disabled:pointer-events-none",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold transition-[background-color,color,transform,box-shadow] duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none",
   {
     variants: {
       variant: {
-        primary: "bg-primary text-on-primary hover:bg-primary-strong",
+        primary: "bg-primary text-on-primary shadow-talk hover:bg-primary-strong",
         outline: "border-[1.5px] border-primary text-primary bg-surface hover:bg-primary-soft",
         neutral: "border border-line-2 text-ink bg-surface hover:bg-surface-2",
         danger: "bg-error text-white hover:opacity-90",

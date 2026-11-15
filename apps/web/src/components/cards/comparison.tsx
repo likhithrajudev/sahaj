@@ -1,5 +1,6 @@
 import type { ComparisonCard as Comparison } from "@sahaj/contracts";
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { useT, type StringKey } from "@/lib/i18n";
 import { clean, cn, sentenceCase, withRupeeSign } from "@/lib/utils";
@@ -19,11 +20,13 @@ export function ComparisonCard({ card }: { card: Comparison }) {
   const initials = plans.map((p) => p.name[0]?.toUpperCase() ?? "?");
 
   return (
-    <CardShell icon="compare_arrows" title={t(TITLE[card.goal] ?? "compareTitle", { n: plans.length })} flush>
-      <div className="flex gap-1 px-[18px] pb-2" role="tablist">
+    <CardShell icon="compare_arrows" title={t(TITLE[card.goal] ?? "compareTitle", { n: plans.length })} flush
+      badges={card.sample_data && <Badge tone="warm">{t("sampleData")}</Badge>}>
+      <div className="mx-[18px] mb-3 inline-grid w-fit grid-cols-2 rounded-full bg-surface-2 p-1" role="tablist">
         {(["table", "list"] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
-            className={cn("h-8 rounded-full px-3 text-[13px] font-semibold", view === v ? "bg-primary-soft text-primary" : "text-ink-3")}>
+            className={cn("h-8 rounded-full px-4 text-[13px] font-semibold transition-[background-color,color,box-shadow] duration-200",
+              view === v ? "bg-surface text-primary shadow-card" : "text-ink-2 hover:text-ink")}>
             {t(v === "table" ? "viewTable" : "viewList")}
           </button>
         ))}
@@ -35,9 +38,15 @@ export function ComparisonCard({ card }: { card: Comparison }) {
             <thead>
               <tr>
                 <th className="sticky left-0 z-10 w-[118px] border-b border-r border-line bg-surface" />
-                {plans.map((p) => (
-                  <th key={p.id} className="w-[150px] border-b border-line px-3 py-2.5 text-left align-top">
-                    <span className="block text-[17px] font-semibold leading-[22px]">{p.name}</span>
+                {plans.map((p, i) => (
+                  <th key={p.id} className="w-[160px] border-b border-line px-3 py-3 text-left align-top">
+                    <span className="flex items-start gap-2">
+                      <span className="flex size-7 flex-none items-center justify-center rounded-lg bg-primary-soft text-[13px] font-bold text-primary">{initials[i]}</span>
+                      <span className="flex flex-col">
+                        <span className="text-base font-semibold leading-5">{p.name}</span>
+                        <span className="text-[13px] font-normal text-ink-3">{clean(p.insurer)}</span>
+                      </span>
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -45,11 +54,11 @@ export function ComparisonCard({ card }: { card: Comparison }) {
             <tbody>
               {labels.map((label, r) => (
                 <tr key={label}>
-                  <th scope="row" className="sticky left-0 z-10 w-[118px] border-b border-r border-line bg-surface py-2.5 pl-[18px] pr-2 text-left align-top text-sm font-normal text-ink-2">
+                  <th scope="row" className="sticky left-0 z-10 w-[118px] border-b border-r border-line bg-surface py-3 pl-[18px] pr-2 text-left align-top text-sm font-normal text-ink-2">
                     {sentenceCase(label)}
                   </th>
                   {plans.map((p, i) => (
-                    <td key={p.id} className="w-[150px] border-b border-line px-3 py-2.5 align-top">{value(i, r)}</td>
+                    <td key={p.id} className="w-[160px] border-b border-line px-3 py-3 align-top tabular-nums">{value(i, r)}</td>
                   ))}
                 </tr>
               ))}
@@ -60,7 +69,7 @@ export function ComparisonCard({ card }: { card: Comparison }) {
         <div className="px-[18px]">
           <div className="flex flex-wrap gap-1.5 pb-2">
             {plans.map((p, i) => (
-              <span key={p.id} className="rounded-lg bg-surface-2 px-2.5 py-1 text-[13px] font-semibold text-primary">
+              <span key={p.id} className="rounded-lg bg-primary-soft px-2.5 py-1 text-[13px] font-semibold text-primary">
                 {initials[i]} · {p.name}
               </span>
             ))}

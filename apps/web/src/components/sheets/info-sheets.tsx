@@ -11,7 +11,6 @@ import { closeSheet, useUi } from "@/store/ui";
 
 export function InstallSheet() {
   const t = useT();
-  const open = useUi((s) => s.sheet === "install");
   const [canPrompt, setCanPrompt] = useState(pwa.canPrompt());
   useEffect(() => {
     const off = pwa.onChange(() => setCanPrompt(pwa.canPrompt()));
@@ -20,12 +19,12 @@ export function InstallSheet() {
   const later = () => { useUi.setState({ installDismissed: true }); closeSheet(); };
 
   return (
-    <Sheet open={open} onClose={later} label={t("installTitle")}>
+    <Sheet name="install" onClose={later} label={t("installTitle")}>
       <div className="flex flex-col gap-4 pb-2">
         <h2 className="text-[22px] font-semibold leading-7">{t("installTitle")}</h2>
         {canPrompt ? (
           <>
-            <div className="flex items-center gap-3 rounded-2xl bg-bg p-4">
+            <div className="flex items-center gap-3 rounded-2xl bg-surface-muted p-4">
               <LogoMark size={52} />
               <div className="flex flex-col"><span className="text-lg font-semibold">Sahaj</span><span className="text-sm text-ink-2">{t("tagline")}</span></div>
             </div>
@@ -54,9 +53,8 @@ export function InstallSheet() {
 
 export function AboutSheet() {
   const t = useT();
-  const open = useUi((s) => s.sheet === "about");
   return (
-    <Sheet open={open} onClose={closeSheet} label={t("menuAbout")}>
+    <Sheet name="about" onClose={closeSheet} label={t("menuAbout")}>
       <div className="flex flex-col gap-4 pb-4">
         <div className="flex items-center gap-3">
           <LogoMark size={44} />
@@ -78,16 +76,15 @@ const TRUST: { level: "verified" | "engine" | "checked"; name: StringKey; body: 
 /** What the trust label on a reply means (opened by tapping the label). The tapped one is highlighted. */
 export function TrustSheet() {
   const t = useT();
-  const open = useUi((s) => s.sheet === "trust");
   const current = useUi((s) => s.trustLevel);
   return (
-    <Sheet open={open} onClose={closeSheet} label={t("trustTitle")}>
+    <Sheet name="trust" onClose={closeSheet} label={t("trustTitle")}>
       <div className="flex flex-col gap-4 pb-4">
         <h2 className="text-[22px] font-semibold leading-7">{t("trustTitle")}</h2>
         <ul className="flex flex-col gap-2.5">
           {TRUST.map(({ level, name, body }) => (
             <li key={level} aria-current={level === current || undefined}
-              className={cn("flex gap-3 rounded-2xl border p-3.5", level === current ? "border-success bg-bg" : "border-line")}>
+              className={cn("flex gap-3 rounded-2xl p-3.5", level === current ? "bg-success-soft ring-[1.5px] ring-success" : "bg-surface-muted")}>
               <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-surface-2 text-success">
                 <Icon name={TRUST_ICON[level]} />
               </span>

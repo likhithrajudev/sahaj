@@ -1,3 +1,4 @@
+import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { SignIn } from "@/components/auth/sign-in";
 import { CardView } from "@/components/cards/card-view";
@@ -7,8 +8,10 @@ import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { Header } from "@/components/layout/header";
 import { Splash } from "@/components/layout/splash";
 import { CitationSheet } from "@/components/sheets/citation-sheet";
+import { previewScene, seedPreview } from "@/dev/preview";
 import { ConsentSheet } from "@/components/sheets/consent-sheet";
 import { AboutSheet, InstallSheet, TrustSheet } from "@/components/sheets/info-sheets";
+import { KycSheet } from "@/components/sheets/kyc-sheet";
 import { MenuSheet, WithdrawDialog } from "@/components/sheets/menu-sheet";
 import { MicSheet } from "@/components/sheets/mic-sheet";
 import { Icon } from "@/components/ui/icon";
@@ -20,8 +23,17 @@ import { pwa } from "@/pwa";
 import { latestCard, useSession } from "@/store/session";
 import { openSheet, useUi } from "@/store/ui";
 
+const preview = import.meta.env.DEV ? previewScene() : null;
+if (preview) seedPreview(preview);
+
 /** Signed out: the sign-in screen. Signed in: the conversation, connected with the account's token. */
 export function App() {
+  if (preview === "signin") return <SignIn />;
+  if (preview) return <Conversation />;
+  return <Live />;
+}
+
+function Live() {
   const signedIn = useAuth((s) => !!s.refreshToken);
   const lost = useSession((s) => s.connection === "signed_out");
   const [ended, setEnded] = useState(false);
@@ -49,7 +61,7 @@ function Conversation() {
   const desktop = useIsDesktop();
   useOfferInstall(desktop);
   return (
-    <div className="flex h-full flex-col bg-bg">
+    <div className="flex h-full flex-col bg-bg" style={{ backgroundImage: "var(--wash)" }}>
       <Header />
       <ConnectionBanner />
       <div className="flex min-h-0 flex-1">
@@ -66,6 +78,7 @@ function Conversation() {
       <InstallSheet />
       <AboutSheet />
       <TrustSheet />
+      <KycSheet />
       <WithdrawDialog />
       <Splash />
     </div>
@@ -82,15 +95,18 @@ function CardPanel() {
   const item = chosen?.kind === "card" ? chosen : latest;
   if (!item || !open) return null;
   return (
-    <aside className="scrollbar-none w-[500px] flex-none overflow-y-auto border-l border-line bg-bg px-6 pb-8 pt-6" aria-label={t("latestCard")}>
+    <aside className="scrollbar-none w-[500px] flex-none overflow-y-auto border-l border-line bg-surface-muted px-6 pb-8 pt-5" aria-label={t("latestCard")}>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-[.12em] text-ink-2">{t("latestCard")}</h2>
+        <h2 className="text-[17px] font-semibold text-ink">{t("latestCard")}</h2>
         <button type="button" aria-label={t("close")} onClick={() => useUi.setState({ panelOpen: false })}
-          className="flex size-10 items-center justify-center rounded-xl text-ink-2 hover:bg-surface-2">
+          className="flex size-10 items-center justify-center rounded-full text-ink-2 transition-colors hover:bg-surface-2">
           <Icon name="close" />
         </button>
       </div>
-      <CardView key={item.id} card={item.card} />
+      <motion.div key={item.id} initial={{ opacity: 0, x: 16, filter: "blur(6px)" }} animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
+        <CardView card={item.card} />
+      </motion.div>
     </aside>
   );
 }

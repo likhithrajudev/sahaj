@@ -24,15 +24,15 @@ cp apps/api/.env.example apps/api/.env.local      # then fill in, at least:
 #   SARVAM_API_KEY   speech-to-text, voice answers, text-to-speech
 #   OPENAI_API_KEY   knowledge-base embeddings, typed replies (suggestion chips)
 #   JWT_SECRET       any 32+ random characters (openssl rand -hex 32)
-#   DEV_LOGIN=true   sign in without Google on this machine (ENVIRONMENT=development)
-#   GOOGLE_CLIENT_IDS (optional) a web OAuth client id for the real Google button
+#   GOOGLE_CLIENT_IDS  the web OAuth client id (Google sign-in); add http://localhost:5173 to its
+#                      Authorized JavaScript origins in Google Cloud Console
 ```
 
 Every time:
 
 ```bash
 pnpm dev:api        # http://127.0.0.1:8000 (fills the knowledge base on first start; check http://127.0.0.1:8000/ready)
-pnpm dev:web        # http://localhost:5173  -> sign in with "Developer sign-in", agree, hold to talk
+pnpm dev:web        # http://localhost:5173  -> Continue with Google, agree, hold to talk
 ```
 
 Other modes:
@@ -43,8 +43,7 @@ pnpm test:api       # backend tests (run from apps/api so .env.local applies)
 pnpm typecheck
 ```
 
-Over a tunnel, the dev login is reachable by anyone with the link (the API sees the request coming from Vite on
-this machine). Use a Google client id instead when sharing the link outside the team.
+For a phone over a tunnel, add the tunnel's https origin to the Google client's Authorized JavaScript origins.
 
 - Testing on an iPhone: [`apps/web/README.md`](apps/web/README.md#testing-on-an-iphone)
 - Deploying to Azure or AWS (single container): [`docs/deployment.md`](docs/deployment.md)

@@ -81,11 +81,6 @@ export async function signInWithGoogle(idToken: string) {
   accept(await post<AuthSession>("/auth/google", { id_token: idToken, platform: "web" }));
 }
 
-/** Development only (the server allows it on this machine with DEV_LOGIN=true). */
-export async function signInDev(email: string, name?: string) {
-  accept(await post<AuthSession>("/auth/dev", { email, name: name || undefined, platform: "web" }));
-}
-
 function signedOut() {
   access = null;
   useAuth.setState({ user: null, refreshToken: null });

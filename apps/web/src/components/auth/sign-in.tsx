@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogoLockup } from "@/components/brand/logo";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { getAuthConfig, signInDev, signInWithGoogle } from "@/lib/auth";
+import { getAuthConfig, signInWithGoogle } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { useUi } from "@/store/ui";
 
@@ -48,7 +47,7 @@ export function SignIn({ ended }: { ended?: boolean }) {
     }
   };
 
-  const nothing = config.data && !config.data.google_client_id && !config.data.dev_login;
+  const nothing = config.data && !config.data.google_client_id;
 
   return (
     <div className="pt-safe pb-safe flex h-full flex-col overflow-y-auto bg-bg">
@@ -72,8 +71,6 @@ export function SignIn({ ended }: { ended?: boolean }) {
             <GoogleButton clientId={config.data.google_client_id} disabled={busy}
               onCredential={(token) => void run(() => signInWithGoogle(token))} onError={setError} />
           )}
-
-          {config.data?.dev_login && <DevLogin busy={busy} onSubmit={(email, name) => void run(() => signInDev(email, name))} />}
 
           {error && (
             <p role="alert" className="flex gap-2 rounded-xl bg-error-soft px-3 py-2.5 text-sm leading-5 text-error-ink">
@@ -117,36 +114,6 @@ function GoogleButton({ clientId, disabled, onCredential, onError }: {
     <div className={disabled ? "pointer-events-none opacity-60" : undefined}>
       <div ref={el} className="flex min-h-11 w-full justify-center" aria-label={t("signInGoogle")} />
     </div>
-  );
-}
-
-function DevLogin({ busy, onSubmit }: { busy: boolean; onSubmit: (email: string, name: string) => void }) {
-  const t = useT();
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    onSubmit(email.trim(), name.trim());
-  };
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-2xl border border-dashed border-line-2 p-4">
-      <div className="flex items-center gap-2">
-        <Icon name="science" size={18} className="text-warm-ink" />
-        <span className="text-[15px] font-semibold">{t("devLoginTitle")}</span>
-      </div>
-      <p className="text-[13px] leading-[18px] text-ink-3">{t("devLoginNote")}</p>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink-2">
-        {t("email")}
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com"
-          className="h-12 rounded-xl border border-line-2 bg-surface px-3.5 text-[17px] text-ink outline-none focus:border-primary" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm font-medium text-ink-2">
-        {t("name")}
-        <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name"
-          className="h-12 rounded-xl border border-line-2 bg-surface px-3.5 text-[17px] text-ink outline-none focus:border-primary" />
-      </label>
-      <Button type="submit" disabled={busy}>{busy ? t("signingIn") : t("signInAction")}</Button>
-    </form>
   );
 }
 

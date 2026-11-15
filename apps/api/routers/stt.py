@@ -14,4 +14,4 @@ async def speech_to_text(file: UploadFile):
         result = await transcribe_audio(audio, filename, content_type)
     except httpx.HTTPStatusError as e:
         raise HTTPException(502, f"Sarvam API error: {e.response.text}")
-    return {"text": result["transcript"], "language": result["language_code"]}
+    return {"text": result.get("transcript") or "", "language": result.get("language_code")}

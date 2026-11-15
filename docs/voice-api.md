@@ -191,7 +191,7 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 
 | `type` | Fields | What to do |
 |---|---|---|
-| `session` | `id`, `user`, `memory` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. |
+| `session` | `id`, `user`, `memory`, `case`, `consents` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. `case` is an open case with a person (carry on with them). `consents` maps each purpose to whether the account already granted it: consent carries over between conversations, so a returning person gets no `consent_required`. |
 | `status` | `stage` | Progress of the current turn, in order: `transcribing`, `thinking`, then `searching`, `comparing` or `calculating` (which work is under way, for hints like "Finding the right documents…"), `checking`, `speaking`; or `speech_unavailable` (the written reply is complete; the spoken one failed) and `waiting_for_executive`. No content. Ignore stages you don't know. |
 | `usage_warning` | `spent_usd`, `budget_usd`, `percent_used` | The person has used 80% of this month's allowance. |
 | `budget_exceeded` | `spent_usd`, `budget_usd`, `resets_at` | The allowance is used up; the message was not processed. |

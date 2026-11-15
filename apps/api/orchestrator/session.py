@@ -76,7 +76,9 @@ class Session:
         except Exception as e:
             log.warning("Could not check for an open case: %s", e)
         await self.ws.send_json({"type": "session", "id": self.id, "user": self.user.public(),
-                                 "memory": self.memory is not None, "case": self._case_view()})
+                                 "memory": self.memory is not None, "case": self._case_view(),
+                                 # consent belongs to the account: a returning person may already have given it
+                                 "consents": {p: consent.is_active(self.user.subject, p) for p in consent.PURPOSES}})
         if ask_consent:
             await self._has_consent()
 
@@ -187,7 +189,7 @@ class Session:
     # ---------- inbound: one recorded utterance ----------
     async def on_audio(self, audio: bytes) -> None:
         if self.case:   # a person is handling it: transcribe and pass the words on
-            stt = await transcribe_audio(audio, "voice.webm", "audio/webm")
+            stt = await transcribe_audio(audio, *sniff_audio(audio))   # Safari records MP4, other browsers WebM
             return await self._relay(stt.get("transcript", ""))
         if not await self._has_consent() or not await self._within_budget():
             return
@@ -225,8 +227,10 @@ class Session:
         stt = await transcribe_audio(audio, filename, content_type)
         seconds = pricing.stt_seconds(len(audio))
         telemetry.record_speech("stt", seconds, pricing.stt_cost(seconds))
-        lang = resolve_language(stt["language_code"])
-        text = self.vault.mask(normalise_digits(stt["transcript"].strip()))
+        # Silence or unclear audio can come back without a transcript or language: that is "I didn't catch that",
+        # not an exception that would close the person's connection.
+        lang = resolve_language(stt.get("language_code"))
+        text = self.vault.mask(normalise_digits((stt.get("transcript") or "").strip()))
         trace.add("stt", language=lang, transcript=text)
         if not text:
             return await self._error("I didn't catch that.")

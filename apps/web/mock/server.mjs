@@ -93,9 +93,38 @@ function silence(seconds) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const SUGGEST = {
+  loan: ["What if I prepay 1 lakh?", "Explain the processing fee"],
+  insurance: ["Compare it with Neem Essential", "What is not covered?"],
+  advice: ["What does the waiting period mean?"],
+};
 
-const server = createServer((req, res) => {
-  if (req.url === "/health") return res.writeHead(200, { "content-type": "application/json" }).end('{"status":"ok"}');
+// ---------- REST: just enough of the real API for the app (sign-in, consents, feedback) ----------
+const USER = { id: "mock-user", email: "demo@sahaj.local", name: "Demo", picture: null, language: "en-IN", platform: "web", role: "user" };
+const accounts = { conversation: false, needs_analysis: false }; // consent carries over between connections, like the real API
+const tokens = () => ({ access_token: "mock-access-" + Date.now(), refresh_token: "mock-refresh-" + Math.random().toString(36).slice(2),
+  token_type: "bearer", expires_in: 900, user: USER });
+const body = (req) => new Promise((resolve) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => resolve(b ? JSON.parse(b) : {})); });
+
+const server = createServer(async (req, res) => {
+  const json = (status, data) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(data));
+  const path = req.url.split("?")[0];
+  if (path === "/health") return json(200, { status: "ok" });
+  if (path === "/auth/config") return json(200, { google_client_id: null, dev_login: true });
+  if (path === "/auth/dev" && req.method === "POST") {
+    const { email, name } = await body(req);
+    Object.assign(USER, { email, name: name || email.split("@")[0] });
+    return json(200, tokens());
+  }
+  if (path === "/auth/refresh" && req.method === "POST") return json(200, tokens());
+  if (path === "/auth/logout") return res.writeHead(204).end();
+  if (path === "/consents") {
+    return json(200, { missing_required: accounts.conversation ? [] : ["conversation"], items: ["conversation", "needs_analysis"].map((p) => ({
+      purpose: p, title: CONSENT[p].title, text: CONSENT[p].text, version: CONSENT[p].version, required: CONSENT[p].required,
+      requires: CONSENT[p].requires, withdrawal: CONSENT[p].withdrawal, granted: accounts[p], granted_at: accounts[p] ? Date.now() / 1000 : null,
+      expires_at: null, granted_version: accounts[p] ? CONSENT[p].version : null, action: accounts[p] ? "none" : "ask" })) });
+  }
+  if (path === "/feedback") return res.writeHead(204).end();
   res.writeHead(404).end();
 });
 const wss = new WebSocketServer({ server, path: "/ws/voice" });
@@ -103,12 +132,11 @@ const wss = new WebSocketServer({ server, path: "/ws/voice" });
 wss.on("connection", (ws) => {
   const send = (o) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(o));
   const id = "ses_" + Math.random().toString(36).slice(2, 6).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
-  const consent = { conversation: false, needs_analysis: false };
+  const consent = accounts;
   let step = 0, handoff = null, pending = null, failures = 0;
   // The real server needs a signed-in user (Authorization / ?access_token); the mock accepts anyone as a demo user.
-  send({ type: "session", id, memory: false, case: null,
-    user: { id: "mock-user", email: "demo@example.com", name: "Demo", picture: null, language: "en-IN", platform: "web", role: "user" } });
-  send({ type: "consent_required", purpose: "conversation", ...CONSENT.conversation });
+  send({ type: "session", id, memory: false, case: null, user: USER, consents: { ...accounts } });
+  if (!accounts.conversation) send({ type: "consent_required", purpose: "conversation", ...CONSENT.conversation });
 
   const reply = async (s) => {
     const trace_id = Math.random().toString(36).slice(2);
@@ -117,8 +145,11 @@ wss.on("connection", (ws) => {
       await sleep(700);
     }
     if (s.card) send({ type: "card", kind: s.kind, card: s.card, trace_id });
+    const level = s.fallback ? "blocked" : s.kind === "calc" || s.kind === "recommendation" ? "engine" : s.citations.length ? "verified" : "checked";
     send({ type: "assistant", agent: s.agent, text: s.text, citations: s.citations, trace_id,
-      kind: s.kind ?? "answer", fallback: !!s.fallback, ...(s.progress ? { progress: s.progress } : {}) });
+      kind: s.kind ?? "answer", fallback: !!s.fallback, ...(s.progress ? { progress: s.progress } : {}),
+      verification: { level, sources: s.citations.length, from_cache: false, checks: ["guardrails", "fact_check"] },
+      suggestions: s.kind === "ask" || s.fallback ? [] : SUGGEST[s.agent] ?? [] });
     if (!s.textOnly) ws.send(silence(Math.min(12, 2 + s.text.length / 40)));
     send({ type: "done" });
     failures = s.fallback ? failures + 1 : 0;
@@ -127,7 +158,12 @@ wss.on("connection", (ws) => {
   ws.on("message", async (data, isBinary) => {
     if (isBinary) {
       console.log(`[mock] recording ${data.length} bytes (${data.subarray(4, 8).toString() === "ftyp" ? "mp4" : "webm"})`);
-      if (handoff) return send({ type: "handoff", reference: handoff });
+      if (handoff) { // a person is handling it: the message goes to them (and the mock person answers)
+        send({ type: "user", text: "Message for the team (recorded " + data.length + " bytes)" });
+        if (!handoff.joined) return send({ type: "status", stage: "waiting_for_executive" });
+        await sleep(1500);
+        return send({ type: "agent_message", case_id: handoff.case.id, agent: { name: "Priya" }, text: "Thanks, I've noted that. I'll call you back today with the details.", at: new Date().toISOString() });
+      }
       if (!consent.conversation) return send({ type: "consent_required", purpose: "conversation", ...CONSENT.conversation });
       const s = script[step % script.length];
       step++;
@@ -140,6 +176,10 @@ wss.on("connection", (ws) => {
       return reply(s);
     }
     const msg = JSON.parse(data.toString());
+    if (msg.type === "text") {
+      send({ type: "user", text: msg.text });
+      return reply({ agent: "general", text: "This is the mock backend: it answers the chips with a fixed reply. Hold to talk to continue the scripted demo.", citations: [], steps: ["thinking", "checking"] });
+    }
     if (msg.type === "consent") {
       consent[msg.purpose] = msg.granted;
       send({ type: "consent", purpose: msg.purpose, status: msg.granted ? "granted" : "revoked" });
@@ -149,8 +189,19 @@ wss.on("connection", (ws) => {
         reply({ ...next, steps: ["thinking"] });
       }
     } else if (msg.type === "handoff") {
-      handoff = "SAH-" + Math.random().toString(36).slice(2, 6).toUpperCase() + "-" + String(Math.floor(Math.random() * 90) + 10);
-      send({ type: "handoff", reference: handoff, reason: "user_requested" });
+      if (handoff) return;
+      const reference = "SAH-" + Math.random().toString(36).slice(2, 6).toUpperCase() + "-" + String(Math.floor(Math.random() * 90) + 10);
+      handoff = { joined: false, case: { id: "case-" + reference, reference, kind: "handoff", status: "waiting", priority: "normal" } };
+      send({ type: "handoff", reference, reason: "user_requested", case: handoff.case });
+      setTimeout(() => { // someone from the team picks it up
+        if (!handoff) return;
+        handoff.joined = true;
+        send({ type: "agent_joined", case_id: handoff.case.id, agent: { name: "Priya" } });
+        send({ type: "agent_message", case_id: handoff.case.id, agent: { name: "Priya" }, text: "Hi, I'm Priya from the Sahaj team. How can I help?", at: new Date().toISOString() });
+      }, 4000);
+    } else if (msg.type === "handoff_cancel") {
+      handoff = null;
+      send({ type: "handoff_closed", status: "cancelled" });
     }
   });
 });

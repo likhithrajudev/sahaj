@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Sheet } from "@/components/ui/sheet";
 import { useT, type StringKey } from "@/lib/i18n";
+import { signOut, useAuth } from "@/lib/auth";
 import { withdrawConsent } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { pwa } from "@/pwa";
@@ -30,6 +31,7 @@ export function MenuSheet() {
   return (
     <Sheet open={open} onClose={closeSheet} label={t("menu")}>
       <div className="flex flex-col gap-5 pb-4">
+        <Account />
         <Section title={t("menuPrivacy")}>
           <div className="overflow-hidden rounded-2xl bg-bg">
             <ConsentRow purpose="conversation" label={t("conversation")} info={consent.conversation} />
@@ -75,6 +77,28 @@ export function MenuSheet() {
         )}
       </div>
     </Sheet>
+  );
+}
+
+function Account() {
+  const t = useT();
+  const user = useAuth((s) => s.user);
+  if (!user) return null;
+  return (
+    <Section title={t("account")}>
+      <div className="flex items-center gap-3 rounded-2xl bg-bg px-4 py-3">
+        {user.picture
+          ? <img src={user.picture} alt="" className="size-10 rounded-full" referrerPolicy="no-referrer" />
+          : <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary"><Icon name="account_circle" /></span>}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[17px] font-semibold">{user.name || user.email}</span>
+          <span className="truncate text-[13px] text-ink-2">{user.email}</span>
+        </div>
+        <Button variant="neutral" size="sm" className="h-11 rounded-xl px-3.5" onClick={() => { closeSheet(); void signOut(); }}>
+          <Icon name="logout" size={18} /> {t("signOut")}
+        </Button>
+      </div>
+    </Section>
   );
 }
 

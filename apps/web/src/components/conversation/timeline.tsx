@@ -6,11 +6,12 @@ import { InstallCard } from "@/components/sheets/info-sheets";
 import { Icon } from "@/components/ui/icon";
 import { useIsDesktop } from "@/lib/media";
 import { useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { cn, withRupeeSign } from "@/lib/utils";
 import { useSession, type TimelineItem } from "@/store/session";
 import { RichText } from "./rich-text";
 import {
-  AssistantBubble, ListeningBubble, openCitation, ResetNote, Rise, SystemNote, ThinkingBubble, UserBubble,
+  AgentMessage, AssistantBubble, ListeningBubble, openCitation, ResetNote, Rise, Suggestions, SystemNote, ThinkingBubble,
+  UserBubble,
 } from "./messages";
 import { ConsentDeclined, Welcome } from "./welcome";
 
@@ -22,7 +23,10 @@ export function Timeline() {
   const declined = useSession((s) => s.declined && s.consent.conversation.state !== "granted" && !s.consentPrompt);
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
-  const lastAssistant = [...timeline].reverse().find((i) => i.kind === "assistant")?.id;
+  const latest = [...timeline].reverse().find((i) => i.kind === "assistant");
+  const lastAssistant = latest?.id;
+  // follow-ups only while the latest reply is the last thing said
+  const suggestions = latest?.kind === "assistant" && timeline[timeline.length - 1]?.id === latest.id ? latest.suggestions : [];
   const conversationItems = timeline.some((i) => i.kind !== "system");
 
   // Follow new content while the person is at the bottom; otherwise offer "Jump to latest".
@@ -54,7 +58,8 @@ export function Timeline() {
           ))}
           {(turn === "recording" || turn === "starting") && <Rise><ListeningBubble /></Rise>}
           {(turn === "sending" || turn === "thinking") && <Rise><ThinkingBubble /></Rise>}
-          {handoff && <Rise><HandoffCard reference={handoff.reference} reason={handoff.reason} /></Rise>}
+          {handoff && <Rise><HandoffCard reference={handoff.reference} reason={handoff.reason} agentName={handoff.agentName} /></Rise>}
+          {!handoff && suggestions.length > 0 && <Rise><Suggestions items={suggestions} /></Rise>}
           {turn === "idle" && !handoff && <InstallCard />}
         </div>
       </div>
@@ -79,7 +84,7 @@ function Item({ item, isLatest }: { item: TimelineItem; isLatest: boolean }) {
     case "assistant":
       return (
         <AssistantBubble item={item} isLatest={isLatest}>
-          <RichText text={item.text} citations={item.citations} onCite={(id) => openCitation(item.id, id)} />
+          <RichText text={withRupeeSign(item.text)} citations={item.citations} onCite={(id) => openCitation(item.id, id)} />
         </AssistantBubble>
       );
     case "card":
@@ -87,7 +92,9 @@ function Item({ item, isLatest }: { item: TimelineItem; isLatest: boolean }) {
     case "consent":
       return <NeedsConsentCard prompt={item.prompt} answered={item.answered} />;
     case "system":
-      return <SystemNote icon={item.icon} text={item.text} tone={item.tone} />;
+      return <SystemNote icon={item.icon} text={item.text} tone={item.tone} vars={item.vars} />;
+    case "agent":
+      return <AgentMessage name={item.name} text={item.text} />;
     case "reset":
       return <ResetNote />;
   }

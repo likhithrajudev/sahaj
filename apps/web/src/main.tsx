@@ -16,7 +16,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { connect } from "./lib/session";
 import { applyTheme } from "./lib/theme";
 import { registerPWA } from "./pwa";
 
@@ -24,7 +23,6 @@ import { registerPWA } from "./pwa";
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
 
 applyTheme();
-connect(); // once, outside React, so StrictMode's double render does not open two sessions
 registerPWA();
 
 createRoot(document.getElementById("root")!).render(

@@ -1,9 +1,10 @@
 import type { ConsentPurpose, ConsentRequiredEvent, ServerEvent } from "@sahaj/contracts";
 import { audioDuration, player } from "@/lib/audio/player";
 import { MicUnavailable, Recorder } from "@/lib/audio/recorder";
+import { api } from "@/lib/auth";
 import type { StringKey } from "@/lib/i18n";
 import { VoiceSocket } from "@/lib/socket";
-import { canTalk, initialSession, pushItem, updateItem, useSession } from "@/store/session";
+import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson } from "@/store/session";
 import { openSheet, useUi } from "@/store/ui";
 
 /**
@@ -16,6 +17,8 @@ const get = useSession.getState;
 
 /** Give up on a turn that gets no reply (the server normally answers within a few seconds). */
 const TURN_TIMEOUT_MS = 60_000;
+/** Below this peak level (0..1) a recording is treated as silence. Normal speech peaks around 0.3-1. */
+const QUIET_PEAK = 0.04;
 let turnTimer: ReturnType<typeof setTimeout> | null = null;
 let dockErrorTimer: ReturnType<typeof setTimeout> | null = null;
 const lastPrompt: Partial<Record<ConsentPurpose, ConsentRequiredEvent>> = {};
@@ -37,10 +40,16 @@ function settle(turn: "idle" | "speaking" = "idle") {
   set({ turn, status: null, statusHistory: turn === "idle" ? [] : get().statusHistory, level: 0 });
 }
 
-function showDockError(message: StringKey) {
+/** A string key, or a message from the server that is meant for the person. */
+function showDockError(message: StringKey | string) {
   set({ dockError: message });
   if (dockErrorTimer) clearTimeout(dockErrorTimer);
   dockErrorTimer = setTimeout(() => set({ dockError: null }), 8000);
+}
+
+/** Server error messages written for people (not exceptions): show them as they are. */
+function isPlainMessage(message: string) {
+  return message.length <= 160 && !/[{}[\]<>]|error|exception|traceback|http|psycopg|status code|\.py\b/i.test(message);
 }
 
 const socket = new VoiceSocket({
@@ -52,10 +61,10 @@ const socket = new VoiceSocket({
       settle();
     }
     if (reconnected) {
-      // A new socket is a new server session: it forgot the conversation and will ask for consent again.
+      // A new socket is a new server session: it forgot the conversation. Consent and an open case belong to the
+      // account and come back in the `session` event.
       set({
-        consent: initialSession.consent, consentPrompt: null, handoff: null, sessionId: null, progress: null,
-        declined: false,
+        consentPrompt: null, sessionId: null, progress: null,
         timeline: get().timeline.map((i) => (i.kind === "consent" && i.answered === null ? { ...i, answered: false } : i)),
       });
       if (get().timeline.length) pushItem({ kind: "reset" });
@@ -67,11 +76,26 @@ const socket = new VoiceSocket({
   onEvent: handleEvent,
 });
 
+const CONSENT_NOTE: Partial<Record<ConsentPurpose, [StringKey, StringKey]>> = {
+  conversation: ["consentGranted", "consentWithdrawn"],
+  needs_analysis: ["detailsGranted", "detailsWithdrawn"],
+};
+
 function handleEvent(e: ServerEvent) {
   switch (e.type) {
-    case "session":
-      set({ sessionId: e.id });
+    case "session": {
+      const consent = { ...initialSession.consent };
+      for (const [purpose, granted] of Object.entries(e.consents ?? {})) {
+        if (purpose in consent) consent[purpose as ConsentPurpose] = { state: granted ? "granted" : "unknown" };
+      }
+      set((s) => ({
+        sessionId: e.id, user: e.user, consent: { ...s.consent, ...consent },
+        declined: consent.conversation.state === "granted" ? false : s.declined,
+        handoff: e.case ? { reference: e.case.reference, case: e.case, agentName: null } : null,
+      }));
+      void loadConsentDetails();
       break;
+    }
 
     case "consent_required":
       lastPrompt[e.purpose] = e;
@@ -80,7 +104,7 @@ function handleEvent(e: ServerEvent) {
         // Audio sent without consent gets only this reply (no `done`), so the turn ends here.
         if (get().turn === "thinking" || get().turn === "sending") settle();
       } else {
-        // The needs-analysis permission is asked inside the conversation, as a card.
+        // Other permissions (personal details, video KYC…) are asked inside the conversation, as a card.
         pushItem({ kind: "consent", prompt: e, answered: null });
       }
       break;
@@ -88,36 +112,45 @@ function handleEvent(e: ServerEvent) {
     case "consent": {
       const prompt = lastPrompt[e.purpose];
       set((s) => ({
-        consent: { ...s.consent, [e.purpose]: { state: e.status, version: prompt?.version, at: Date.now() } },
-        declined: e.purpose === "conversation" && e.status === "revoked" ? true : s.declined,
+        consent: { ...s.consent, [e.purpose]: { state: e.status, version: prompt?.version ?? s.consent[e.purpose]?.version, at: Date.now() } },
+        declined: e.purpose === "conversation" ? e.status === "revoked" : s.declined,
       }));
-      if (e.purpose === "conversation" && e.status === "granted") set({ declined: false });
-      if (e.purpose === "conversation") {
+      const note = CONSENT_NOTE[e.purpose];
+      if (note) {
         pushItem(e.status === "granted"
-          ? { kind: "system", icon: "verified_user", text: "consentGranted", tone: "success" }
-          : { kind: "system", icon: "remove_moderator", text: "consentWithdrawn" });
-      } else {
-        pushItem(e.status === "granted"
-          ? { kind: "system", icon: "verified_user", text: "detailsGranted", tone: "success" }
-          : { kind: "system", icon: "remove_moderator", text: "detailsWithdrawn" });
-        if (e.status === "revoked") set({ progress: null });
+          ? { kind: "system", icon: "verified_user", text: note[0], tone: "success" }
+          : { kind: "system", icon: "remove_moderator", text: note[1] });
       }
+      if (e.purpose === "needs_analysis" && e.status === "revoked") set({ progress: null });
       break;
     }
 
     case "user":
       set({ dockError: null });
       pushItem({ kind: "user", text: e.text });
-      if (get().turn === "sending") waitForReply("thinking"); // transcribed: now Sahaj is working on it
+      if (withPerson(get())) settle(); // passed on to the person handling the case: no AI reply follows
+      else if (get().turn === "sending") waitForReply("thinking"); // transcribed: now Sahaj is working on it
       break;
 
     case "status":
-      if (e.stage === "speaking" || e.stage === "speech_unavailable" || e.stage === "waiting_for_executive") break;
+      if (e.stage === "waiting_for_executive") return settle();
+      if (e.stage === "speaking" || e.stage === "speech_unavailable") break;
       set((s) => ({
         status: e.stage,
         statusHistory: s.statusHistory.includes(e.stage) ? s.statusHistory : [...s.statusHistory, e.stage],
         turn: s.turn === "sending" && e.stage !== "transcribing" ? "thinking" : s.turn,
       }));
+      break;
+
+    case "usage_warning":
+      set((s) => ({ budget: { ...s.budget, warned: true } }));
+      pushItem({ kind: "system", icon: "info", text: "budgetWarning", vars: { pct: Math.round(e.percent_used) } });
+      break;
+
+    case "budget_exceeded":
+      player.discard();
+      settle();
+      set((s) => ({ budget: { ...s.budget, exceededUntil: e.resets_at } }));
       break;
 
     case "card":
@@ -129,8 +162,9 @@ function handleEvent(e: ServerEvent) {
       pushItem({
         kind: "assistant", agent: e.agent, text: e.text, citations: e.citations, traceId: e.trace_id,
         replyKind: e.kind ?? "answer", fallback: !!e.fallback, audioUrl: null, audioSeconds: null, textOnly: false,
+        verification: e.verification ?? null, suggestions: e.suggestions ?? [], feedback: null,
       });
-      // The server asks for the needs-analysis permission just before the message that explains why;
+      // The server asks for a permission just before the message that explains why;
       // show the message first, then the permission card under it.
       const items = get().timeline;
       const consentIdx = items.length - 2;
@@ -148,17 +182,45 @@ function handleEvent(e: ServerEvent) {
       void playReply();
       break;
 
+    // ---------- a person from the team ----------
     case "handoff":
       player.discard();
       settle();
-      set({ handoff: { reference: e.reference, reason: e.reason ?? get().handoff?.reason }, progress: null });
+      set({ handoff: { reference: e.reference, reason: e.reason, case: e.case, agentName: null }, progress: null });
       break;
+
+    case "agent_joined":
+      set((s) => ({ handoff: s.handoff && { ...s.handoff, agentName: e.agent.name, case: s.handoff.case && { ...s.handoff.case, status: "with_executive" } } }));
+      pushItem({ kind: "system", icon: "support_agent", text: "agentJoined", tone: "success", vars: { name: e.agent.name } });
+      break;
+
+    case "agent_message":
+      pushItem({ kind: "agent", name: e.agent.name, text: e.text });
+      break;
+
+    case "agent_left":
+      set((s) => ({ handoff: s.handoff && { ...s.handoff, agentName: null, case: s.handoff.case && { ...s.handoff.case, status: "waiting" } } }));
+      pushItem({ kind: "system", icon: "support_agent", text: "agentLeft" });
+      break;
+
+    case "video_kyc_scheduled":
+      pushItem({ kind: "system", icon: "event_available", text: "kycScheduled", tone: "success",
+        vars: { when: new Date(e.scheduled_for).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) } });
+      break;
+
+    case "handoff_closed": {
+      const name = get().handoff?.agentName ?? "";
+      set({ handoff: null });
+      if (e.message) pushItem({ kind: "agent", name, text: e.message });
+      pushItem({ kind: "system", icon: "restart_alt", text: e.status === "resolved" ? "caseResolved" : "caseCancelled" });
+      break;
+    }
 
     case "error":
       player.discard();
       settle();
-      // Server messages can be technical; only the "didn't catch that" case is shown as is.
-      showDockError(/catch/i.test(e.message) ? "didntCatch" : "serverError");
+      if (get().budget.exceededUntil) break; // the budget banner already says why
+      showDockError(/catch/i.test(e.message) ? "didntCatch" : isPlainMessage(e.message) ? e.message : "serverError");
       break;
   }
 }
@@ -187,17 +249,56 @@ async function playReply() {
   }
 }
 
+/** Versions and dates of the account's consents, for the menu (the socket only says on/off). */
+async function loadConsentDetails() {
+  try {
+    const { items } = await api<import("@sahaj/contracts").ConsentsResponse>("/consents");
+    set((s) => {
+      const consent = { ...s.consent };
+      for (const item of items) {
+        if (!(item.purpose in consent)) continue;
+        const purpose = item.purpose as ConsentPurpose;
+        consent[purpose] = {
+          state: item.granted ? "granted" : consent[purpose].state === "revoked" ? "revoked" : "unknown",
+          version: item.granted_version ?? item.version,
+          at: item.granted_at ? item.granted_at * 1000 : undefined,
+        };
+        // the text the person agreed to, so the menu can show it again and a later grant echoes the right version
+        lastPrompt[purpose] ??= { type: "consent_required", purpose, title: item.title, version: item.version, text: item.text,
+          required: item.required, requires: item.requires as ConsentPurpose | null, withdrawal: item.withdrawal };
+      }
+      return { consent };
+    });
+  } catch {
+    /* the menu just shows less detail */
+  }
+}
+
 // ---------------------------------------------------------------- public API
 
 const recorder = new Recorder();
+let listening = false;
 
+/** Opens the conversation (after sign-in). */
 export function connect() {
-  socket.connect();
+  void socket.connect();
+  if (listening) return;
+  listening = true;
   const wake = () => document.visibilityState === "visible" && socket.wake();
   // iOS closes sockets when the app is backgrounded or the phone locks; reconnect on return.
   document.addEventListener("visibilitychange", wake);
   window.addEventListener("online", wake);
   window.addEventListener("pageshow", wake);
+}
+
+/** Closes the conversation and forgets it (sign-out). */
+export function disconnect() {
+  socket.close();
+  player.stop();
+  void recorder.cancel();
+  if (turnTimer) clearTimeout(turnTimer);
+  for (const key of Object.keys(lastPrompt)) delete lastPrompt[key as ConsentPurpose];
+  set({ ...initialSession }); // "connecting" again; "signed_out" is only for a session the server rejected
 }
 
 export function reconnectNow() {
@@ -239,6 +340,11 @@ export async function stopTalking() {
     set({ turn: "idle" });
     return showDockError("tooShort");
   }
+  // Silence isn't sent: speech-to-text tends to "hear" a word in some language in it, which Sahaj would answer.
+  if (recorder.peak !== null && recorder.peak < QUIET_PEAK) {
+    set({ turn: "idle" });
+    return showDockError("tooQuiet");
+  }
   if (!socket.sendAudio(recording)) {
     set({ turn: "idle" });
     return showDockError("notConnected");
@@ -250,6 +356,16 @@ export async function cancelTalking() {
   if (get().turn !== "recording" && get().turn !== "starting") return;
   await recorder.cancel();
   set({ turn: "idle", recordingSince: null, level: 0 });
+}
+
+/** A follow-up chip: sent as a typed message, answered aloud like a spoken one. Call from a tap. */
+export function sendSuggestion(text: string) {
+  if (!canTalk(get())) return;
+  if (get().turn === "speaking") stopSpeaking();
+  player.unlock(); // the reply is spoken, and this tap is the gesture iOS needs
+  if (!socket.send({ type: "text", text, speak: true })) return showDockError("notConnected");
+  set({ dockError: null, lastTextOnly: false });
+  waitForReply(withPerson(get()) ? "sending" : "thinking");
 }
 
 /** The mic explainer's Continue: ask the browser for permission now, inside this tap. */
@@ -267,15 +383,16 @@ export async function grantMicFromExplainer() {
 }
 
 export function answerConsent(granted: boolean, purpose?: ConsentPurpose) {
-  const sheetPrompt = get().consentPrompt;
-  const p = purpose ?? sheetPrompt?.purpose;
+  const p = purpose ?? get().consentPrompt?.purpose;
   if (!p) return;
+  const version = (p === "conversation" ? get().consentPrompt : lastPrompt[p])?.version;
   if (p === "conversation") set({ consentPrompt: null });
   else {
-    const pending = [...get().timeline].reverse().find((i) => i.kind === "consent" && i.answered === null);
+    const pending = [...get().timeline].reverse().find((i) => i.kind === "consent" && i.prompt.purpose === p && i.answered === null);
     if (pending) updateItem(pending.id, { answered: granted });
   }
-  socket.send({ type: "consent", purpose: p, granted });
+  // The version of the text that was shown: the server records the grant against it (and refuses a stale one).
+  socket.send({ type: "consent", purpose: p, granted, version });
   // Granting needs_analysis makes the server answer the question that triggered it.
   if (granted && p === "needs_analysis") waitForReply("thinking");
 }
@@ -291,8 +408,25 @@ export function withdrawConsent(purpose: ConsentPurpose) {
 }
 
 export function requestHuman() {
+  if (withPerson(get())) return;
   stopSpeaking();
   socket.send({ type: "handoff" });
+}
+
+/** The person no longer needs the team: the AI answers again. */
+export function cancelHandoff() {
+  socket.send({ type: "handoff_cancel" });
+}
+
+/** Thumbs up/down on a reply. Rating again replaces the earlier one. */
+export async function rateReply(itemId: string, traceId: string, rating: "up" | "down") {
+  updateItem(itemId, { feedback: rating });
+  try {
+    await api("/feedback", { method: "POST", body: JSON.stringify({ trace_id: traceId, rating }) });
+  } catch {
+    updateItem(itemId, { feedback: null });
+    showDockError("feedbackFailed");
+  }
 }
 
 export function replay(url: string) {

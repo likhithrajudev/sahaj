@@ -4,16 +4,18 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type ProxyOptions } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+/** First path segments that belong to the API (keep in sync with API_PREFIXES in apps/api/main.py). */
+const API_PATHS = ["ws", "auth", "users", "admin", "chat", "consents", "files", "feedback", "usage", "desk", "stt",
+  "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"];
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // FastAPI in development. The app always calls same-origin paths, so the phone only needs to reach Vite.
   const api = env.SAHAJ_API_URL ?? "http://127.0.0.1:8000";
-  const proxy: Record<string, ProxyOptions> = {
-    "/ws": { target: api, ws: true, changeOrigin: true },
-    "/stt": { target: api, changeOrigin: true },
-    "/health": { target: api, changeOrigin: true },
-    "/audit": { target: api, changeOrigin: true },
-  };
+  // Every API path (apps/api/main.py API_PREFIXES) goes to FastAPI; everything else is the app.
+  const proxy: Record<string, ProxyOptions> = Object.fromEntries(
+    API_PATHS.map((p) => [`/${p}`, { target: api, changeOrigin: true, ws: p === "ws" }]),
+  );
   // Tunnels used for iPhone testing (the mic needs HTTPS). Add more with SAHAJ_ALLOWED_HOSTS=a.com,b.com
   const allowedHosts = [".ngrok-free.app", ".ngrok.app", ".ngrok.io", ".trycloudflare.com", ".loca.lt",
     ...(env.SAHAJ_ALLOWED_HOSTS ?? "").split(",").filter(Boolean)];
@@ -47,7 +49,7 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}", "**/material-symbols-*.woff2"], // icons work offline
           // Never serve the API, the socket or the old test page from the app shell.
-          navigateFallbackDenylist: [/^\/(ws|stt|health|audit|docs|openapi\.json|redoc|test)(\/|$)/],
+          navigateFallbackDenylist: [new RegExp(`^/(${API_PATHS.join("|").replace(".", "\\.")})(/|$)`)],
           runtimeCaching: [
             {
               // Indic fonts are loaded only when a script appears (unicode-range), then kept offline.

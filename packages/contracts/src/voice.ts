@@ -13,7 +13,8 @@
 import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
-export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis";
+export type ConsentPurpose =
+  | "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records";
 /** "advice" is the needs-analysis / recommendation flow. */
 export type AgentName = "insurance" | "loan" | "general" | "advice";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
@@ -92,6 +93,8 @@ export interface SessionEvent {
   memory: boolean;
   /** A person is already handling this customer: carry on with them. */
   case: CaseView | null;
+  /** Which consents the account already has (they carry over between conversations and devices). */
+  consents: Partial<Record<ConsentPurpose | "video_kyc", boolean>>;
 }
 
 /** Close code when the access token is missing, invalid or expired: refresh it (POST /auth/refresh) and reconnect. */

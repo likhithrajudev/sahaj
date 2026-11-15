@@ -57,8 +57,8 @@ const S = {
   detailsWithdrawn: ["Personal details permission withdrawn", "निजी जानकारी की अनुमति वापस ली गई"],
   resetTitle: ["Conversation reset after reconnecting", "दोबारा जुड़ने के बाद बातचीत नई शुरू हुई"],
   resetBody: [
-    "Sahaj no longer remembers earlier turns. You'll be asked for consent again before you continue.",
-    "Sahaj को पिछली बातें याद नहीं हैं। आगे बढ़ने से पहले आपसे फिर सहमति माँगी जाएगी।",
+    "The connection dropped, so Sahaj no longer remembers the earlier turns. Your consent and any case with the team are kept.",
+    "कनेक्शन टूट गया था, इसलिए Sahaj को पिछली बातें याद नहीं हैं। आपकी सहमति और टीम के साथ कोई मामला बना रहता है।",
   ],
 
   // mic
@@ -100,6 +100,7 @@ const S = {
   tryAgain: ["Try again", "फिर कोशिश करें"],
   didntCatch: ["I didn't catch that. Try speaking a little closer.", "मैं सुन नहीं पाया। थोड़ा पास से बोलकर देखें।"],
   tooShort: ["Hold the button while you speak.", "बोलते समय बटन दबाकर रखें।"],
+  tooQuiet: ["I couldn't hear anything, so nothing was sent. Try speaking a little closer.", "कुछ सुनाई नहीं दिया, इसलिए कुछ नहीं भेजा। थोड़ा पास से बोलकर देखें।"],
   textOnly: ["Text only in this language", "इस भाषा में सिर्फ़ टेक्स्ट"],
   textOnlyNoAudio: ["Text only in this language · no audio", "इस भाषा में सिर्फ़ टेक्स्ट · ऑडियो नहीं"],
   warn: ["seconds left. Sends automatically at 0:30.", "सेकंड बाकी। 0:30 पर अपने-आप भेजा जाएगा।"],
@@ -285,6 +286,56 @@ const S = {
   iosStep2: ["Scroll down and choose “Add to Home Screen”", "नीचे स्क्रॉल करके “Add to Home Screen” चुनें"],
   iosStep3: ["Tap “Add”. Sahaj opens full screen from your home screen.", "“Add” पर टैप करें। Sahaj होम स्क्रीन से पूरी स्क्रीन पर खुलेगा।"],
   shareHere: ["Share button is here", "Share बटन यहाँ है"],
+
+  // sign-in
+  signInTitle: ["Sign in to start", "शुरू करने के लिए साइन इन करें"],
+  signInBody: [
+    "Your consent and any case with our team stay with your account, on every device.",
+    "आपकी सहमति और हमारी टीम के साथ कोई भी मामला आपके खाते में रहता है, हर डिवाइस पर।",
+  ],
+  signInGoogle: ["Continue with Google", "Google से जारी रखें"],
+  devLoginTitle: ["Developer sign-in", "डेवलपर साइन-इन"],
+  devLoginNote: ["Only on this machine in development. No Google account needed.", "सिर्फ़ इस मशीन पर, डेवलपमेंट में। Google खाते की ज़रूरत नहीं।"],
+  email: ["Email", "ईमेल"],
+  name: ["Name", "नाम"],
+  signInAction: ["Sign in", "साइन इन करें"],
+  signingIn: ["Signing in…", "साइन इन हो रहा है…"],
+  signInUnavailable: [
+    "Sign-in isn't set up on this server yet (Google client id or JWT secret missing).",
+    "इस सर्वर पर साइन-इन अभी सेट नहीं है (Google client id या JWT secret नहीं है)।",
+  ],
+  serverUnreachable: ["Can't reach Sahaj right now.", "अभी Sahaj से कनेक्ट नहीं हो पा रहा।"],
+  sessionEnded: ["You were signed out. Please sign in again.", "आप साइन आउट हो गए। फिर से साइन इन करें।"],
+  account: ["Account", "खाता"],
+  signOut: ["Sign out", "साइन आउट"],
+
+  // person from the team
+  waitingForPerson: ["Waiting for someone from the team", "टीम से किसी का इंतज़ार"],
+  withAgent: ["You're talking to {name}", "आप {name} से बात कर रहे हैं"],
+  talkToPersonHint: ["Hold the button to talk to them. Sahaj isn't answering for now.", "उनसे बात करने के लिए बटन दबाकर रखें। अभी Sahaj जवाब नहीं दे रहा।"],
+  cancelHandoff: ["I don't need help any more", "अब मदद की ज़रूरत नहीं"],
+  agentJoined: ["{name} from the team joined", "टीम से {name} जुड़े"],
+  agentLeft: ["The person stepped away. You're back in the queue.", "व्यक्ति चले गए। आप फिर से कतार में हैं।"],
+  kycScheduled: ["Video KYC scheduled for {when}", "वीडियो KYC {when} के लिए तय"],
+  caseResolved: ["The team closed your case. Sahaj is answering again.", "टीम ने आपका मामला बंद किया। Sahaj फिर से जवाब दे रहा है।"],
+  caseCancelled: ["Back with Sahaj.", "फिर से Sahaj के साथ।"],
+  fromTeam: ["Sahaj team", "Sahaj टीम"],
+  holdToPerson: ["Hold to talk to them", "उनसे बात करने के लिए दबाएँ"],
+
+  // budget
+  budgetWarning: ["You've used {pct}% of this month's allowance.", "आपने इस महीने की सीमा का {pct}% इस्तेमाल किया है।"],
+  budgetExceeded: ["You've used this month's allowance.", "आपने इस महीने की सीमा पूरी कर ली है।"],
+  budgetResets: ["It renews on {date}.", "यह {date} को फिर शुरू होगी।"],
+
+  // trust and feedback
+  verified: ["Verified · {n} sources", "सत्यापित · {n} स्रोत"],
+  verifiedOne: ["Verified · 1 source", "सत्यापित · 1 स्रोत"],
+  engine: ["Calculated", "गणना से"],
+  checked: ["Checked", "जाँचा गया"],
+  helpful: ["Helpful", "उपयोगी"],
+  notHelpful: ["Not helpful", "उपयोगी नहीं"],
+  feedbackFailed: ["Couldn't save your rating.", "आपकी रेटिंग सेव नहीं हो सकी।"],
+  askNext: ["You could ask", "आप पूछ सकते हैं"],
 } satisfies Record<string, [string, string]>;
 
 export type StringKey = keyof typeof S;
@@ -294,6 +345,11 @@ export function translate(lang: UiLang, key: StringKey, vars?: Record<string, st
   let s = S[key][lang === "hi" ? 1 : 0];
   if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
   return s;
+}
+
+/** A key of the string table (as opposed to a message from the server). */
+export function isStringKey(value: string): value is StringKey {
+  return Object.prototype.hasOwnProperty.call(S, value);
 }
 
 /** const t = useT(); t("hold") */

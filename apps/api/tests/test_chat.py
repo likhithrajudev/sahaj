@@ -256,3 +256,19 @@ def test_assistant_event_carries_verification_and_suggestions():
     reply = next(m for m in ws.sent if m["type"] == "assistant")
     assert reply["verification"]["level"] == "engine" and "guardrails" in reply["verification"]["checks"]
     assert len(reply["suggestions"]) == 3
+
+
+def test_unclear_audio_is_didnt_catch_that_not_a_dropped_connection(monkeypatch):
+    """Speech-to-text can answer silence or noise without a transcript or language code. The person must hear
+    "I didn't catch that"; before, a KeyError escaped the turn and closed their connection."""
+    async def stt(audio, filename, content_type):
+        assert (filename, content_type) == ("voice.m4a", "audio/mp4")   # Safari's MP4 is labelled as such
+        return {"request_id": "r1"}
+    monkeypatch.setattr(session_module, "transcribe_audio", stt)
+    monkeypatch.setattr(config, "BUDGET_ENABLED", False)
+    ws = FakeWS()
+    s = session_module.Session(ws, USER)
+    asyncio.run(s.on_control(CONSENT))
+    ws.sent.clear()
+    asyncio.run(s.on_audio(b"\x00\x00\x00\x1cftypM4A " + b"\x00" * 64))
+    assert ws.sent[-1] == {"type": "error", "message": "I didn't catch that."} and FakeGraph.seen == []

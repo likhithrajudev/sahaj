@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { SignIn } from "@/components/auth/sign-in";
 import { CardView } from "@/components/cards/card-view";
 import { Dock } from "@/components/conversation/dock";
 import { Timeline } from "@/components/conversation/timeline";
@@ -12,12 +13,39 @@ import { MenuSheet, WithdrawDialog } from "@/components/sheets/menu-sheet";
 import { MicSheet } from "@/components/sheets/mic-sheet";
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/lib/i18n";
+import { signOut, useAuth } from "@/lib/auth";
 import { useIsDesktop } from "@/lib/media";
+import { connect, disconnect } from "@/lib/session";
 import { pwa } from "@/pwa";
 import { latestCard, useSession } from "@/store/session";
 import { openSheet, useUi } from "@/store/ui";
 
+/** Signed out: the sign-in screen. Signed in: the conversation, connected with the account's token. */
 export function App() {
+  const signedIn = useAuth((s) => !!s.refreshToken);
+  const lost = useSession((s) => s.connection === "signed_out");
+  const [ended, setEnded] = useState(false);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    setEnded(false);
+    connect();
+    return () => disconnect();
+  }, [signedIn]);
+
+  // the server rejected the session (refresh token expired, revoked or reused): back to sign-in
+  useEffect(() => {
+    if (signedIn && lost) {
+      setEnded(true);
+      void signOut();
+    }
+  }, [signedIn, lost]);
+
+  if (!signedIn) return <SignIn ended={ended} />;
+  return <Conversation />;
+}
+
+function Conversation() {
   const desktop = useIsDesktop();
   useOfferInstall(desktop);
   return (

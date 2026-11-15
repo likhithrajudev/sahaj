@@ -1,12 +1,15 @@
 import type {
   AgentName,
   Card,
+  CaseView,
   Citation,
   ConsentPurpose,
   ConsentRequiredEvent,
   HandoffReason,
   ReplyKind,
   Stage,
+  User,
+  Verification,
 } from "@sahaj/contracts";
 import { create } from "zustand";
 import type { MicError } from "@/lib/audio/recorder";
@@ -37,16 +40,34 @@ export type TimelineItem =
       audioUrl: string | null;
       audioSeconds: number | null;
       textOnly: boolean;
+      /** How the reply was checked (trust badge) and follow-ups to offer as chips. */
+      verification: Verification | null;
+      suggestions: string[];
+      feedback: "up" | "down" | null;
     }
+  /** A message from the person (executive) handling the conversation. */
+  | { id: string; kind: "agent"; name: string; text: string }
   | { id: string; kind: "card"; card: Card; traceId: string }
   /** Inline consent request (needs analysis is asked in the conversation, not in a sheet). */
   | { id: string; kind: "consent"; prompt: ConsentRequiredEvent; answered: boolean | null }
-  | { id: string; kind: "system"; icon: string; text: StringKey; tone?: "success" | "muted" }
+  | { id: string; kind: "system"; icon: string; text: StringKey; tone?: "success" | "muted"; vars?: Record<string, string | number> }
   | { id: string; kind: "reset" };
+
+/** A person from the team is (or will be) handling the conversation. Messages go to them, not the AI. */
+export interface HandoffState {
+  reference: string;
+  reason?: HandoffReason;
+  case: CaseView | null;
+  /** Set once an executive has joined. */
+  agentName: string | null;
+  /** The case was closed: back to Sahaj. Kept so the card can say so. */
+  closed?: "resolved" | "cancelled";
+}
 
 export interface SessionState {
   connection: ConnectionStatus;
   sessionId: string | null;
+  user: User | null;
   consent: Record<ConsentPurpose, ConsentInfo>;
   /** The conversation consent sheet (needs_analysis is shown inline instead). */
   consentPrompt: ConsentRequiredEvent | null;
@@ -64,21 +85,25 @@ export interface SessionState {
   muted: boolean;
   micError: MicError | null;
   /** Transient message in the dock ("I didn't catch that…"). */
-  dockError: StringKey | null;
+  /** A string key, or a message the server wrote for the person. */
+  dockError: StringKey | string | null;
   /** The last reply had no audio because the language is text only. */
   lastTextOnly: boolean;
   /** Needs-analysis progress from the server. */
   progress: { step: number; total: number } | null;
-  handoff: { reference: string; reason?: HandoffReason } | null;
+  handoff: HandoffState | null;
+  /** Monthly allowance: warned once near the limit; when used up, nothing more is processed until it resets. */
+  budget: { warned: boolean; exceededUntil: string | null };
   timeline: TimelineItem[];
 }
 
 export const initialSession: SessionState = {
   connection: "connecting",
   sessionId: null,
+  user: null,
   consent: {
     conversation: { state: "unknown" }, needs_analysis: { state: "unknown" }, memory: { state: "unknown" },
-    documents: { state: "unknown" }, document_analysis: { state: "unknown" },
+    documents: { state: "unknown" }, document_analysis: { state: "unknown" }, conversation_records: { state: "unknown" },
   },
   consentPrompt: null,
   declined: false,
@@ -94,6 +119,7 @@ export const initialSession: SessionState = {
   lastTextOnly: false,
   progress: null,
   handoff: null,
+  budget: { warned: false, exceededUntil: null },
   timeline: [],
 };
 
@@ -116,11 +142,14 @@ export function updateItem(id: string, patch: Partial<TimelineItem>) {
   }));
 }
 
-/** The person may start a new recording. */
+/** A person is handling the conversation right now (talking goes to them). */
+export const withPerson = (s: SessionState) => !!s.handoff && !s.handoff.closed;
+
+/** The person may start a new recording. While a person handles the case, recordings go to them. */
 export const canTalk = (s: SessionState) =>
   s.connection === "open" &&
   s.consent.conversation.state === "granted" &&
-  !s.handoff &&
+  !s.budget.exceededUntil &&
   !s.consentPrompt &&
   !s.timeline.some((i) => i.kind === "consent" && i.answered === null) &&
   (s.turn === "idle" || s.turn === "speaking");

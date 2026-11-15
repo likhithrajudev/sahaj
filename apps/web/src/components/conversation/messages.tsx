@@ -5,9 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useT, type StringKey } from "@/lib/i18n";
-import { replay, requestHuman } from "@/lib/session";
+import { rateReply, replay, requestHuman, sendSuggestion } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { useSession, type TimelineItem } from "@/store/session";
+import { canTalk, useSession, withPerson, type TimelineItem } from "@/store/session";
 import { useUi } from "@/store/ui";
 
 /** Cards and messages rise 12 px and fade in, 280 ms (Motion foundations). */
@@ -59,7 +59,10 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
 
   return (
     <div className="max-w-[92%] rounded-[20px] border border-line bg-surface px-4 pb-3.5 pt-3.5">
-      <AgentBadge agent={item.agent} question={item.replyKind === "ask" && item.agent !== "advice"} />
+      <div className="flex flex-wrap items-center gap-2">
+        <AgentBadge agent={item.agent} question={item.replyKind === "ask" && item.agent !== "advice"} />
+        <VerificationBadge item={item} />
+      </div>
       <p dir="auto" className="mt-2 text-[17px] leading-[25px]">{children}</p>
       {item.textOnly && (
         <p className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-info">
@@ -68,6 +71,7 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
       )}
       {isLatest && (item.audioUrl || item.replyKind !== "ask") && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Feedback item={item} />
           {item.audioUrl && !speakingThis && (
             <button type="button" onClick={() => replay(item.audioUrl!)} disabled={turn !== "idle"}
               className="flex h-10 items-center gap-1.5 rounded-xl bg-primary-soft px-3.5 text-[15px] font-semibold text-primary disabled:opacity-50">
@@ -84,10 +88,74 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
   );
 }
 
+/** How the reply was checked: a quiet trust signal next to the agent label. */
+function VerificationBadge({ item }: { item: Assistant }) {
+  const t = useT();
+  const v = item.verification;
+  if (!v || v.level === "blocked") return null;
+  const label = v.level === "verified" ? (v.sources === 1 ? t("verifiedOne") : t("verified", { n: v.sources }))
+    : v.level === "engine" ? t("engine") : t("checked");
+  return (
+    <span className="inline-flex h-6 items-center gap-1 text-xs font-semibold text-success">
+      <Icon name={v.level === "verified" ? "verified" : "task_alt"} size={15} /> {label}
+    </span>
+  );
+}
+
+function Feedback({ item }: { item: Assistant }) {
+  const t = useT();
+  if (item.fallback) return null;
+  return (
+    <span className="flex items-center gap-1">
+      {(["up", "down"] as const).map((r) => (
+        <button key={r} type="button" aria-label={t(r === "up" ? "helpful" : "notHelpful")} aria-pressed={item.feedback === r}
+          onClick={() => void rateReply(item.id, item.traceId, r)}
+          className={cn("flex size-10 items-center justify-center rounded-xl",
+            item.feedback === r ? "bg-primary-soft text-primary" : "text-ink-3 hover:bg-surface-2")}>
+          <Icon name={r === "up" ? "thumb_up" : "thumb_down"} size={19} fill={item.feedback === r} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Follow-up questions from the server, under the latest reply. Tapping one asks it (answered aloud). */
+export function Suggestions({ items }: { items: string[] }) {
+  const t = useT();
+  const ready = useSession((s) => canTalk(s) && s.turn === "idle");
+  if (!items.length || !ready) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[13px] font-semibold uppercase tracking-[.08em] text-ink-3">{t("askNext")}</span>
+      <div className="flex flex-wrap gap-2">
+        {items.map((s) => (
+          <button key={s} type="button" dir="auto" onClick={() => sendSuggestion(s)}
+            className="rounded-full border border-line-2 bg-surface px-3.5 py-2 text-left text-[15px] leading-5 text-primary hover:bg-primary-soft">
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A message from the person handling the conversation. */
+export function AgentMessage({ name, text }: { name: string; text: string }) {
+  const t = useT();
+  return (
+    <div className="max-w-[92%] rounded-[20px] border border-info/30 bg-info-soft px-4 pb-3.5 pt-3">
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-info">
+        <Icon name="support_agent" size={16} /> {name || t("fromTeam")}
+      </span>
+      <p dir="auto" className="mt-1.5 text-[17px] leading-[25px]">{text}</p>
+    </div>
+  );
+}
+
 /** The safe reply when the checks blocked an answer. A feature, not an error. */
 function FallbackBubble({ children }: { children: ReactNode }) {
   const t = useT();
-  const handoff = useSession((s) => !!s.handoff);
+  const handoff = useSession(withPerson);
   return (
     <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4">
       <div className="flex gap-3">
@@ -106,14 +174,16 @@ function FallbackBubble({ children }: { children: ReactNode }) {
   );
 }
 
-export function SystemNote({ icon, text, tone }: { icon: string; text: StringKey; tone?: "success" | "muted" }) {
+export function SystemNote({ icon, text, tone, vars }: {
+  icon: string; text: StringKey; tone?: "success" | "muted"; vars?: Record<string, string | number>;
+}) {
   const t = useT();
   return (
     <div className="flex items-center gap-3 py-1 text-sm text-ink-2" role="status">
       <span className="h-px flex-1 bg-line" />
       <span className="flex items-center gap-1.5 text-center">
         <Icon name={icon} size={17} className={tone === "success" ? "text-success" : "text-ink-3"} />
-        {t(text)}
+        {t(text, vars)}
       </span>
       <span className="h-px flex-1 bg-line" />
     </div>

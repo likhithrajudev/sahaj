@@ -37,6 +37,8 @@ export class Recorder {
   private cancelled = false;
 
   private meter: { ctx: AudioContext; raf: number } | null = null;
+  /** Loudest level seen in this recording (0..1), or null when the browser didn't let us measure. */
+  peak: number | null = null;
 
   /**
    * Starts recording. Resolves once the mic is live. Call from a pointer/keyboard handler.
@@ -63,6 +65,7 @@ export class Recorder {
     const mimeType = pickMimeType();
     this.parts = [];
     this.cancelled = false;
+    this.peak = null;
     this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
     this.recorder.ondataavailable = (e) => e.data.size && this.parts.push(e.data);
     this.finished = new Promise((resolve) => {
@@ -108,7 +111,10 @@ export class Recorder {
         analyser.getByteTimeDomainData(data);
         let sum = 0;
         for (const v of data) sum += ((v - 128) / 128) ** 2;
-        onLevel(Math.min(1, Math.sqrt(sum / data.length) * 4)); // speech RMS is ~0.05-0.25
+        const level = Math.min(1, Math.sqrt(sum / data.length) * 4); // speech RMS is ~0.05-0.25
+        // a suspended context reads flat silence: only count it once audio is really flowing
+        if (ctx.state === "running") this.peak = Math.max(this.peak ?? 0, level);
+        onLevel(level);
         if (this.meter) this.meter.raf = requestAnimationFrame(tick);
       };
       this.meter = { ctx, raf: requestAnimationFrame(tick) };

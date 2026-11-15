@@ -2,21 +2,21 @@ import { MAX_RECORDING_SECONDS } from "@sahaj/contracts";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "@/components/ui/icon";
-import { useT, type StringKey } from "@/lib/i18n";
+import { isStringKey, useT, type StringKey } from "@/lib/i18n";
 import {
   cancelTalking, dismissDockError, replay, requestHuman, startTalking, stopSpeaking, stopTalking, toggleMute,
 } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { canTalk, lastSpoken, useSession, type SessionState } from "@/store/session";
+import { canTalk, lastSpoken, useSession, withPerson, type SessionState } from "@/store/session";
 import { openSheet } from "@/store/ui";
 
 type DockState =
   | "idle" | "recording" | "sending" | "thinking" | "speaking" | "error" | "textonly"
-  | "disabled" | "handoff" | "offline" | "blocked";
+  | "disabled" | "person" | "offline" | "blocked" | "budget";
 
 function dockState(s: SessionState): DockState {
-  if (s.handoff) return "handoff";
   if (s.connection === "offline") return "offline";
+  if (s.budget.exceededUntil) return "budget";
   if (s.turn === "starting" || s.turn === "recording") return "recording";
   if (s.turn === "sending") return "sending";
   if (s.turn === "thinking") return "thinking";
@@ -24,6 +24,7 @@ function dockState(s: SessionState): DockState {
   if (s.micError === "denied" || s.micError === "insecure" || s.micError === "unsupported") return "blocked";
   if (!canTalk(s)) return "disabled";
   if (s.dockError) return "error";
+  if (withPerson(s)) return "person"; // talking goes to the person handling the case
   if (s.lastTextOnly) return "textonly";
   return "idle";
 }
@@ -43,11 +44,13 @@ export function Dock() {
 
   useSpaceToTalk();
 
-  const off = state === "handoff" || state === "offline" || state === "blocked" || state === "disabled";
+  const person = useSession(withPerson);
+  const off = state === "budget" || state === "offline" || state === "blocked" || state === "disabled";
   const label = ({
     idle: t("hold"), error: t("hold"), textonly: t("hold"), recording: t("release"), sending: t("sending"),
     thinking: status ? t(`step_${status}` as StringKey) : t("thinking"), speaking: t("tapStop"),
-    handoff: t("personWillReply"), offline: t("youreOffline"), blocked: t("micBlocked"), disabled: t("pleaseWait"),
+    person: t("holdToPerson"), offline: t("youreOffline"), blocked: t("micBlocked"), disabled: t("pleaseWait"),
+    budget: t("budgetExceeded"),
   } satisfies Record<DockState, string>)[state];
 
   const onDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -95,7 +98,7 @@ export function Dock() {
   );
 
   const human = (
-    <button type="button" onClick={requestHuman} disabled={state === "handoff"}
+    <button type="button" onClick={requestHuman} disabled={person}
       className="flex w-[88px] flex-col items-center gap-1 pt-3 disabled:opacity-60">
       <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-primary">
         <Icon name="support_agent" />
@@ -111,7 +114,7 @@ export function Dock() {
       </span>
       <span className="text-xs font-semibold leading-[14px] text-ink-2">{muted ? t("unmute") : t("mute")}</span>
     </button>
-  ) : spoken?.audioUrl && (state === "idle" || state === "error") ? (
+  ) : spoken?.audioUrl && (state === "idle" || state === "error" || state === "person") ? (
     <button type="button" onClick={() => replay(spoken.audioUrl!)} className="flex w-[88px] flex-col items-center gap-1 pt-3">
       <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-primary">
         <Icon name="replay" />
@@ -162,7 +165,7 @@ export function Dock() {
                 <Icon name={muted ? "volume_up" : "volume_off"} size={20} /> {muted ? t("unmute") : t("mute")}
               </button>
             )}
-            <button type="button" onClick={requestHuman} disabled={state === "handoff"}
+            <button type="button" onClick={requestHuman} disabled={person}
               className="flex h-12 items-center gap-2 rounded-full bg-primary-soft px-4 font-semibold text-primary disabled:opacity-60">
               <Icon name="support_agent" size={20} /> {t("human")}
             </button>
@@ -207,7 +210,7 @@ function TalkFace({ state, reduceMotion }: { state: DockState; reduceMotion: boo
           <Icon name="stop" size={34} fill />
         </span>
       );
-    case "handoff":
+    case "budget":
     case "offline":
     case "blocked":
     case "disabled":
@@ -226,15 +229,24 @@ function TalkFace({ state, reduceMotion }: { state: DockState; reduceMotion: boo
 }
 
 /** The strip above the controls: recording timer, speaking progress, error, or text-only note. */
-function DockStrip({ state, dockError }: { state: DockState; dockError: StringKey | null }) {
+function DockStrip({ state, dockError }: { state: DockState; dockError: StringKey | string | null }) {
   const t = useT();
+  const resets = useSession((s) => s.budget.exceededUntil);
   if (state === "recording") return <RecordingStrip />;
+  if (state === "budget" && resets) {
+    return (
+      <div role="alert" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-warn-soft px-3 py-2 text-[15px] font-medium text-sample-ink">
+        <Icon name="info" size={20} />
+        <span>{t("budgetExceeded")} {t("budgetResets", { date: new Date(resets).toLocaleDateString(undefined, { day: "numeric", month: "long" }) })}</span>
+      </div>
+    );
+  }
   if (state === "speaking") return <SpeakingStrip />;
   if (state === "error" && dockError) {
     return (
       <div role="alert" className="flex min-h-11 items-center gap-2 rounded-[14px] bg-error-soft py-1.5 pl-3 pr-1.5 text-[15px] font-medium text-error-ink">
         <Icon name="hearing_disabled" size={20} />
-        <span className="flex-1">{t(dockError)}</span>
+        <span className="flex-1">{isStringKey(dockError) ? t(dockError) : dockError}</span>
         <button type="button" onClick={dismissDockError}
           className="flex h-9 items-center rounded-[10px] bg-surface px-3 text-sm font-semibold">
           {t("tryAgain")}

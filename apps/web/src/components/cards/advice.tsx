@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { useT, type StringKey, type UiLang } from "@/lib/i18n";
-import { answerConsent } from "@/lib/session";
+import { isStringKey, useT, type StringKey, type UiLang } from "@/lib/i18n";
+import { answerConsent, cancelHandoff } from "@/lib/session";
 import { cn, rupees, rupeesWords, sentenceCase, splitSample, withRupeeSign } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 
@@ -215,22 +215,24 @@ function Collapse({ open, children }: { open: boolean; children: React.ReactNode
 }
 
 /** The needs-analysis permission, asked inside the conversation. */
+/** A permission asked inside the conversation (personal details, and any other purpose the server asks for). */
 export function NeedsConsentCard({ prompt, answered }: { prompt: ConsentRequiredEvent; answered: boolean | null }) {
   const t = useT();
+  const needs = prompt.purpose === "needs_analysis";
   return (
     <section className={cn("rounded-[20px] border bg-surface p-[18px]", answered === null ? "border-primary" : "border-line opacity-80")}>
       <h3 className="flex items-center gap-3 text-[19px] font-semibold">
         <span className="flex size-10 items-center justify-center rounded-xl bg-surface-2 text-primary"><Icon name="badge" /></span>
-        {t("consent2Title")}
+        {needs ? t("consent2Title") : prompt.title}
       </h3>
       <p className="mt-3 whitespace-pre-line text-[17px] leading-[25px]">{prompt.text}</p>
-      <p className="mt-2 text-[13px] text-ink-3">{t("consentNotice")} {prompt.version} · {t("purposeNeeds")}</p>
+      <p className="mt-2 text-[13px] text-ink-3">{t("consentNotice")} {prompt.version} · {needs ? t("purposeNeeds") : prompt.purpose.replace(/_/g, " ")}</p>
       {answered === null ? (
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <Button variant="outline" onClick={() => answerConsent(false, "needs_analysis")}>{t("notNow")}</Button>
-          <Button onClick={() => answerConsent(true, "needs_analysis")}>{t("agree")}</Button>
+          <Button variant="outline" onClick={() => answerConsent(false, prompt.purpose)}>{t("notNow")}</Button>
+          <Button onClick={() => answerConsent(true, prompt.purpose)}>{t("agree")}</Button>
         </div>
-      ) : answered === false ? (
+      ) : answered === false && needs ? (
         <p className="mt-3 flex gap-2 rounded-xl bg-info-soft px-3 py-2.5 text-sm leading-5 text-ink">
           <Icon name="info" size={18} className="text-info" /> {t("needsDeclined")}
         </p>
@@ -239,7 +241,7 @@ export function NeedsConsentCard({ prompt, answered }: { prompt: ConsentRequired
   );
 }
 
-export function HandoffCard({ reference, reason }: { reference: string; reason?: string }) {
+export function HandoffCard({ reference, reason, agentName }: { reference: string; reason?: string; agentName: string | null }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -249,7 +251,7 @@ export function HandoffCard({ reference, reason }: { reference: string; reason?:
       setTimeout(() => setCopied(false), 1600);
     } catch { /* clipboard blocked: the number is selectable */ }
   };
-  const body = reason ? (`handoff_${reason}` as StringKey) : "handoffDefault";
+  const body = reason && isStringKey(`handoff_${reason}`) ? (`handoff_${reason}` as StringKey) : "handoffDefault";
   return (
     <section className="flex flex-col gap-4 rounded-[20px] border border-line bg-surface p-5">
       <span className="flex size-14 items-center justify-center rounded-full bg-surface-2 text-primary"><Icon name="support_agent" size={30} /></span>
@@ -265,7 +267,13 @@ export function HandoffCard({ reference, reason }: { reference: string; reason?:
           <Icon name={copied ? "check" : "content_copy"} size={18} /> {t(copied ? "copied" : "copy")}
         </button>
       </div>
-      <p className="text-sm leading-5 text-ink-3">{t("handoffShared")}</p>
+      <p className={cn("flex items-center gap-2 rounded-xl px-3 py-2.5 text-[15px] font-semibold",
+        agentName ? "bg-success-soft text-success" : "bg-warn-soft text-sample-ink")} role="status">
+        <Icon name={agentName ? "support_agent" : "timer"} size={20} />
+        {agentName ? t("withAgent", { name: agentName }) : t("waitingForPerson")}
+      </p>
+      <p className="text-sm leading-5 text-ink-3">{t("handoffShared")} {t("talkToPersonHint")}</p>
+      <Button variant="neutral" size="md" onClick={cancelHandoff}>{t("cancelHandoff")}</Button>
     </section>
   );
 }

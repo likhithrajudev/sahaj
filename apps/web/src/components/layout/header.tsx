@@ -4,12 +4,13 @@ import { Icon } from "@/components/ui/icon";
 import { useT, type StringKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { pwa } from "@/pwa";
-import { useSession } from "@/store/session";
+import { useSession, withPerson } from "@/store/session";
 import { openSheet } from "@/store/ui";
 
 const STATUS: Record<string, [StringKey, string]> = {
   open: ["connected", "var(--success)"],
   connecting: ["connecting", "var(--ink-3)"],
+  signed_out: ["connecting", "var(--ink-3)"],
   reconnecting: ["reconnectingShort", "var(--warn)"],
   offline: ["offline", "var(--error)"],
   handoff: ["withPerson", "var(--info)"],
@@ -18,7 +19,7 @@ const STATUS: Record<string, [StringKey, string]> = {
 export function Header() {
   const t = useT();
   const connection = useSession((s) => s.connection);
-  const handoff = useSession((s) => !!s.handoff);
+  const handoff = useSession(withPerson);
   const progress = useSession((s) => s.progress);
   const [label, dot] = STATUS[handoff ? "handoff" : connection];
 

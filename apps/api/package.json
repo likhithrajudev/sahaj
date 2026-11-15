@@ -1,0 +1,10 @@
+{
+  "name": "@sahaj/api",
+  "private": true,
+  "description": "Sahaj FastAPI backend (Python). This file only exposes workspace scripts; Python deps live in requirements.txt.",
+  "scripts": {
+    "dev": "uvicorn main:app --reload --port 8000",
+    "test": "pytest tests",
+    "ingest": "python -m rag.ingest"
+  }
+}

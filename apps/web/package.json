@@ -1,0 +1,10 @@
+{
+  "name": "@sahaj/web",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"web app not scaffolded yet\""
+  },
+  "dependencies": {
+    "@sahaj/contracts": "workspace:*"
+  }
+}

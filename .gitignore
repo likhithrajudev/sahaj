@@ -20,3 +20,12 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# Node / monorepo
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Local runtime data (api)
+*.db

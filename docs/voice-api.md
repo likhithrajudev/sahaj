@@ -4,7 +4,7 @@ Talk to Sahaj by voice about insurance policies and loan offers. The client reco
 
 - **Voice endpoint:** `ws://127.0.0.1:8000/ws/voice` (use `wss://` in production)
 - **Interactive REST docs:** `http://127.0.0.1:8000/docs`
-- **Working reference client:** `static/index.html`
+- **Working reference client:** `apps/api/static/index.html`
 
 ## Session flow
 
@@ -127,7 +127,7 @@ rec.onstop = async () => { ws.send(await new Blob(parts).arrayBuffer()); parts =
 - No CORS configuration, so `fetch` to `/stt` from another origin is blocked until it is added.
 - Push-to-talk only: no interrupting the agent and no automatic end-of-speech detection.
 - Conversation history is in memory only. The audit ledger is SQLite for now (Postgres planned).
-- Documents are **sample data** (`knowledge/`). Answers are only as correct as the documents loaded.
+- Documents are **sample data** (`apps/api/knowledge/`). Answers are only as correct as the documents loaded.
 - Questions the documents cannot answer, or answers the automatic checks cannot confirm, return "I can't confirm that…". In testing this is the intended outcome for questions that are related to a policy but not covered by it, and it also happens occasionally for answerable ones (the checks fail closed).
 - Safari records mp4, not webm. Untested.
 
@@ -136,7 +136,8 @@ rec.onstop = async () => { ws.send(await new Blob(parts).arrayBuffer()); parts =
 The knowledge base lives in **Postgres with pgvector** (cosine similarity over multilingual embeddings). Embeddings are computed locally, so documents never leave your infrastructure.
 
 ```bash
-docker compose up -d db            # Postgres 18 + pgvector (image pgvector/pgvector:pg18)
+docker compose up -d db            # from the repo root: Postgres 18 + pgvector (image pgvector/pgvector:pg18)
+cd apps/api                        # everything below runs from apps/api
 python3.12 -m venv .venv           # Python 3.12 is required (LangGraph and LangChain)
 .venv/bin/pip install -r requirements.txt
 
@@ -154,4 +155,4 @@ pytest tests                       # database tests skip if Postgres is unreacha
 python tests/eval_retrieval.py     # retrieval accuracy; re-run after changing documents or the model
 ```
 
-Documents are Markdown in `knowledge/<domain>/` (`insurance`, `loan`). Each `## <clause-number> <title>` section is one citable clause, and its id is `<file-name>:<clause-number>`. Re-run `python -m rag.ingest` after editing: only changed clauses are re-embedded, and clauses you delete are removed so they can never be served. If the database is unreachable the app still starts, but every question returns an error instead of an answer.
+Documents are Markdown in `apps/api/knowledge/<domain>/` (`insurance`, `loan`). Each `## <clause-number> <title>` section is one citable clause, and its id is `<file-name>:<clause-number>`. Re-run `python -m rag.ingest` after editing: only changed clauses are re-embedded, and clauses you delete are removed so they can never be served. If the database is unreachable the app still starts, but every question returns an error instead of an answer.

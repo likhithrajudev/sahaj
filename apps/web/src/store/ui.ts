@@ -3,7 +3,9 @@ import { persist } from "zustand/middleware";
 import type { UiLang } from "@/lib/i18n";
 
 export type Theme = "system" | "light" | "dark";
-export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about";
+export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about" | "trust";
+/** The trust badges a reply can carry (see Verification in @sahaj/contracts). */
+export type TrustLevel = "verified" | "engine" | "checked";
 
 interface UiState {
   lang: UiLang;
@@ -14,6 +16,8 @@ interface UiState {
   sheet: Sheet;
   /** Citations sheet: the assistant message and the citation to highlight. */
   citation: { itemId: string; citationId: string } | null;
+  /** Trust sheet: the badge that was tapped, shown highlighted. */
+  trustLevel: TrustLevel | null;
   /** Desktop side panel: which card is open (null = latest). */
   panelItemId: string | null;
   panelOpen: boolean;
@@ -33,6 +37,7 @@ export const useUi = create<UiState>()(
       installDismissed: false,
       sheet: null,
       citation: null,
+      trustLevel: null,
       panelItemId: null,
       panelOpen: true,
       confirmWithdraw: null,

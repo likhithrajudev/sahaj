@@ -8,7 +8,7 @@ import { Header } from "@/components/layout/header";
 import { Splash } from "@/components/layout/splash";
 import { CitationSheet } from "@/components/sheets/citation-sheet";
 import { ConsentSheet } from "@/components/sheets/consent-sheet";
-import { AboutSheet, InstallSheet } from "@/components/sheets/info-sheets";
+import { AboutSheet, InstallSheet, TrustSheet } from "@/components/sheets/info-sheets";
 import { MenuSheet, WithdrawDialog } from "@/components/sheets/menu-sheet";
 import { MicSheet } from "@/components/sheets/mic-sheet";
 import { Icon } from "@/components/ui/icon";
@@ -65,6 +65,7 @@ function Conversation() {
       <MenuSheet />
       <InstallSheet />
       <AboutSheet />
+      <TrustSheet />
       <WithdrawDialog />
       <Splash />
     </div>

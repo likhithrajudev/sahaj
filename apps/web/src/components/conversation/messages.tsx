@@ -88,6 +88,8 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
   );
 }
 
+export const TRUST_ICON = { verified: "verified", engine: "calculate", checked: "task_alt" } as const;
+
 /** How the reply was checked: a quiet trust signal next to the agent label. */
 function VerificationBadge({ item }: { item: Assistant }) {
   const t = useT();
@@ -95,10 +97,15 @@ function VerificationBadge({ item }: { item: Assistant }) {
   if (!v || v.level === "blocked") return null;
   const label = v.level === "verified" ? (v.sources === 1 ? t("verifiedOne") : t("verified", { n: v.sources }))
     : v.level === "engine" ? t("engine") : t("checked");
+  const level = v.level;
+  // Tapping the label explains it. The hit area is 44 px tall although the label stays small.
   return (
-    <span className="inline-flex h-6 items-center gap-1 text-xs font-semibold text-success">
-      <Icon name={v.level === "verified" ? "verified" : "task_alt"} size={15} /> {label}
-    </span>
+    <button type="button" aria-label={`${label}. ${t("trustWhat")}`}
+      onClick={() => useUi.setState({ sheet: "trust", trustLevel: level })}
+      className="relative inline-flex h-6 items-center gap-1 text-xs font-semibold text-success before:absolute before:-inset-x-2 before:-inset-y-2.5 before:content-['']">
+      <Icon name={TRUST_ICON[level]} size={15} /> {label}
+      <Icon name="info" size={14} className="text-ink-3" />
+    </button>
   );
 }
 
@@ -229,12 +236,13 @@ export function ThinkingBubble() {
       {steps.map((step, i) => {
         const current = i === steps.length - 1;
         return (
-          <span key={step} className={cn("flex items-center gap-2 text-[15px]", current ? "font-semibold text-ink" : "text-ink-2")}>
+          <motion.span key={step} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
+            className={cn("flex items-center gap-2 text-[15px]", current ? "font-semibold text-ink" : "text-ink-2")}>
             {current
               ? <Icon name="progress_activity" size={18} className="animate-spin text-primary" />
               : <Icon name="check" size={18} className="text-success" />}
             {t(`step_${step}` as StringKey)}
-          </span>
+          </motion.span>
         );
       })}
     </div>

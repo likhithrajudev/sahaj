@@ -3,7 +3,9 @@ import { LogoMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Sheet } from "@/components/ui/sheet";
-import { useT } from "@/lib/i18n";
+import { TRUST_ICON } from "@/components/conversation/messages";
+import { useT, type StringKey } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { pwa } from "@/pwa";
 import { closeSheet, useUi } from "@/store/ui";
 
@@ -61,6 +63,45 @@ export function AboutSheet() {
           <h2 className="text-[22px] font-semibold">Sahaj</h2>
         </div>
         <p className="text-[17px] leading-[25px] text-ink-2">{t("aboutBody")}</p>
+        <Button variant="neutral" onClick={closeSheet}>{t("gotIt")}</Button>
+      </div>
+    </Sheet>
+  );
+}
+
+const TRUST: { level: "verified" | "engine" | "checked"; name: StringKey; body: StringKey }[] = [
+  { level: "verified", name: "trustVerifiedName", body: "trustVerifiedBody" },
+  { level: "engine", name: "engine", body: "trustEngineBody" },
+  { level: "checked", name: "checked", body: "trustCheckedBody" },
+];
+
+/** What the trust label on a reply means (opened by tapping the label). The tapped one is highlighted. */
+export function TrustSheet() {
+  const t = useT();
+  const open = useUi((s) => s.sheet === "trust");
+  const current = useUi((s) => s.trustLevel);
+  return (
+    <Sheet open={open} onClose={closeSheet} label={t("trustTitle")}>
+      <div className="flex flex-col gap-4 pb-4">
+        <h2 className="text-[22px] font-semibold leading-7">{t("trustTitle")}</h2>
+        <ul className="flex flex-col gap-2.5">
+          {TRUST.map(({ level, name, body }) => (
+            <li key={level} aria-current={level === current || undefined}
+              className={cn("flex gap-3 rounded-2xl border p-3.5", level === current ? "border-success bg-bg" : "border-line")}>
+              <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-surface-2 text-success">
+                <Icon name={TRUST_ICON[level]} />
+              </span>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-2 text-[17px] font-semibold">
+                  {t(name)}
+                  {level === current && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-semibold text-ink-2">{t("trustThis")}</span>}
+                </span>
+                <span className="text-[15px] leading-[22px] text-ink-2">{t(body)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="text-sm leading-5 text-ink-2">{t("trustBlocked")}</p>
         <Button variant="neutral" onClick={closeSheet}>{t("gotIt")}</Button>
       </div>
     </Sheet>

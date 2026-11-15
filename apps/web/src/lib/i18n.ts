@@ -322,6 +322,26 @@ const S = {
   verifiedOne: ["Verified · 1 source", "सत्यापित · 1 स्रोत"],
   engine: ["Calculated", "गणना से"],
   checked: ["Checked", "जाँचा गया"],
+  trustTitle: ["How Sahaj checks its answers", "Sahaj अपने जवाब कैसे जाँचता है"],
+  trustWhat: ["What this label means", "इस लेबल का मतलब"],
+  trustThis: ["This answer", "यह जवाब"],
+  trustVerifiedName: ["Verified", "सत्यापित"],
+  trustVerifiedBody: [
+    "Every fact comes from an approved document and was checked against it. Tap a number in the answer to see the source.",
+    "हर बात किसी मंज़ूर दस्तावेज़ से ली गई है और उससे मिलाकर जाँची गई है। स्रोत देखने के लिए जवाब में दिए नंबर पर टैप करें।",
+  ],
+  trustEngineBody: [
+    "The figures come from Sahaj's own calculator or plan comparison, not from a written answer.",
+    "ये आँकड़े Sahaj के अपने कैलकुलेटर या प्लान तुलना से आए हैं, लिखे हुए जवाब से नहीं।",
+  ],
+  trustCheckedBody: [
+    "Screened by our safety checks. It states no facts from documents, so there is no source to show.",
+    "हमारी सुरक्षा जाँच से गुज़रा है। इसमें दस्तावेज़ों की कोई जानकारी नहीं है, इसलिए दिखाने के लिए कोई स्रोत नहीं है।",
+  ],
+  trustBlocked: [
+    "If an answer fails these checks, Sahaj doesn't show it and tells you it can't confirm that.",
+    "अगर कोई जवाब इन जाँचों में पास नहीं होता, तो Sahaj उसे नहीं दिखाता और बताता है कि वह इसकी पुष्टि नहीं कर सकता।",
+  ],
   helpful: ["Helpful", "उपयोगी"],
   notHelpful: ["Not helpful", "उपयोगी नहीं"],
   feedbackFailed: ["Couldn't save your rating.", "आपकी रेटिंग सेव नहीं हो सकी।"],

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(".env.local")
@@ -41,3 +42,9 @@ ADVISORY_ENABLED = os.getenv("ADVISORY_ENABLED", "true").lower() in ("1", "true"
 LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")           # consent + audit + handoff records
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")                # protects /audit; endpoint is disabled if unset
 HANDOFF_WEBHOOK_URL = os.getenv("HANDOFF_WEBHOOK_URL")    # where human-handoff packets are delivered
+
+# Deployment. WEB_DIST is the built web app (apps/web/dist) that FastAPI serves at /, so the app, /stt and
+# /ws/voice share one origin (no CORS, and wss:// just works behind the load balancer). Set CORS_ORIGINS
+# (comma-separated) only if the web app is hosted on a different origin.
+WEB_DIST = os.getenv("WEB_DIST", str(Path(__file__).resolve().parent.parent / "web" / "dist"))
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]

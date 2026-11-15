@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Placeholder tokens (shadcn naming). Replace with the design system's values when the designs arrive. */
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.99 0.003 95);
+  --foreground: oklch(0.22 0.02 200);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.33 0.05 195);           /* deep teal */
+  --primary-foreground: oklch(0.98 0.01 95);
+  --secondary: oklch(0.95 0.01 190);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.96 0.005 95);
+  --muted-foreground: oklch(0.48 0.02 200);
+  --accent: oklch(0.8 0.14 75);              /* marigold, for the talk button */
+  --accent-foreground: oklch(0.25 0.05 60);
+  --destructive: oklch(0.58 0.2 27);
+  --border: oklch(0.91 0.01 200);
+  --input: var(--border);
+  --ring: var(--primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.18 0.015 200);
+    --foreground: oklch(0.95 0.01 95);
+    --card: oklch(0.22 0.015 200);
+    --primary: oklch(0.75 0.08 190);
+    --primary-foreground: oklch(0.18 0.02 200);
+    --secondary: oklch(0.27 0.02 200);
+    --muted: oklch(0.25 0.015 200);
+    --muted-foreground: oklch(0.7 0.02 200);
+    --border: oklch(0.32 0.02 200);
+  }
+}
+
+@theme inline {
+  --font-sans: "Noto Sans Variable", "Noto Sans Devanagari Variable", "Noto Sans Bengali Variable",
+    "Noto Sans Tamil Variable", "Noto Sans Telugu Variable", "Noto Sans Kannada Variable",
+    "Noto Sans Gujarati Variable", "Noto Sans Gurmukhi Variable", "Noto Sans Malayalam Variable",
+    "Noto Sans Oriya Variable", system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    height: 100%;
+    overscroll-behavior: none; /* no rubber-band bounce in the installed app */
+    -webkit-tap-highlight-color: transparent;
+  }
+  #root {
+    height: 100dvh;
+  }
+  button {
+    touch-action: manipulation; /* no double-tap zoom delay */
+  }
+}
+
+/* Hold-to-talk: stop iOS from selecting text or showing the long-press callout while the button is held. */
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.75rem); }
+.px-safe {
+  padding-left: max(env(safe-area-inset-left), 1rem);
+  padding-right: max(env(safe-area-inset-right), 1rem);
+}

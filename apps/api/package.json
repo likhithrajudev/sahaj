@@ -3,8 +3,9 @@
   "private": true,
   "description": "Sahaj FastAPI backend (Python). This file only exposes workspace scripts; Python deps live in requirements.txt.",
   "scripts": {
-    "dev": "uvicorn main:app --reload --port 8000",
+    "dev": "uvicorn main:app --reload --host 127.0.0.1 --port 8000",
     "test": "pytest tests",
-    "ingest": "python -m rag.ingest"
+    "ingest": "python -m rag.ingest",
+    "lock": "docker run --rm -v \"$PWD:/w\" -w /w ghcr.io/astral-sh/uv:python3.12-bookworm-slim uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-manylinux_2_28 -o requirements.lock --no-header -q"
   }
 }

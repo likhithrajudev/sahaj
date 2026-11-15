@@ -11,6 +11,7 @@ from loan.flow import LoanCalc
 from orchestrator.graph import GRAPH
 from orchestrator.turn import Turn
 from services import telemetry
+from services.audio import sniff as sniff_audio
 from services.stt import transcribe_audio
 from services.tts import language_name, resolve_language, speak
 from trust import consent, guardrails, handoff
@@ -101,7 +102,8 @@ class Session:
             trace.save()
 
     async def _turn(self, audio: bytes, trace: Trace) -> None:
-        stt = await transcribe_audio(audio, "voice.webm", "audio/webm")
+        filename, content_type = sniff_audio(audio)  # Safari records MP4, other browsers WebM
+        stt = await transcribe_audio(audio, filename, content_type)
         lang = resolve_language(stt["language_code"])
         text = self.vault.mask(normalise_digits(stt["transcript"].strip()))
         trace.add("stt", language=lang, transcript=text)

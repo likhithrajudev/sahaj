@@ -131,7 +131,7 @@ rec.onstop = async () => { ws.send(await new Blob(parts).arrayBuffer()); parts =
 - Conversation history is in memory only. The audit ledger is SQLite for now (Postgres planned).
 - Documents are **sample data** (`apps/api/knowledge/`). Answers are only as correct as the documents loaded.
 - Questions the documents cannot answer, or answers the automatic checks cannot confirm, return "I can't confirm that…". In testing this is the intended outcome for questions that are related to a policy but not covered by it, and it also happens occasionally for answerable ones (the checks fail closed).
-- Safari records mp4, not webm. Untested.
+- Recordings may be WebM (Chrome, Android) or MP4 (Safari, iPhone): the server detects the format from the bytes, so send the recording as is.
 
 ## Server setup (backend team)
 

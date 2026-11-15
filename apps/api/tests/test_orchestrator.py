@@ -178,6 +178,7 @@ def test_sample_insurance_comparison_uses_live_search(stubs, monkeypatch):
 
 def test_an_active_conversation_gets_the_first_look(stubs, monkeypatch):
     calls, state = stubs
+    monkeypatch.setattr(g.catalogue, "is_sample", lambda: False)   # with the sample catalogue, answers go to web search
 
     class Flow:
         active, asking = True, "age"
@@ -207,8 +208,9 @@ def test_cache_is_not_used_for_personal_questions(stubs):
     assert calls["generate"] == 2 and len(cache.ANSWER_CACHE) == 0
 
 
-def test_cache_is_not_used_while_an_analysis_is_active(stubs):
+def test_cache_is_not_used_while_an_analysis_is_active(stubs, monkeypatch):
     calls, _ = stubs
+    monkeypatch.setattr(g.catalogue, "is_sample", lambda: False)
 
     class Flow:
         active, asking = True, "age"

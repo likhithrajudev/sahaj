@@ -10,7 +10,16 @@ SARVAM_CHAT_MODEL = os.getenv("SARVAM_CHAT_MODEL", "sarvam-105b-conversations")
 
 # Knowledge base: Postgres + pgvector, cosine similarity over OpenAI embeddings (multilingual, so a Hindi question finds
 # an English clause). Changing the model or the dimension rebuilds the knowledge base on the next start.
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/sahaj")
+def _database_url() -> str:
+    # On AWS the parts come from the RDS secret (DB_HOST, DB_USER, ...) rather than one URL.
+    if os.getenv("DATABASE_URL") or not os.getenv("DB_HOST"):
+        return os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/sahaj")
+    from urllib.parse import quote
+    return (f"postgresql://{quote(os.environ['DB_USER'], safe='')}:{quote(os.environ['DB_PASSWORD'], safe='')}@{os.environ['DB_HOST']}:"
+            f"{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'sahaj')}?sslmode=require")
+
+
+DATABASE_URL = _database_url()
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 OPENAI_EMBED_PRICE_PER_M = float(os.getenv("OPENAI_EMBED_PRICE_PER_M", "0.02"))   # USD per million tokens (estimate)
@@ -40,13 +49,17 @@ PRICE_CACHED_PER_M = float(os.getenv("PRICE_CACHED_PER_M")) if os.getenv("PRICE_
 # Kill switch for policy recommendations. Off = Sahaj still explains and compares, but never recommends.
 ADVISORY_ENABLED = os.getenv("ADVISORY_ENABLED", "true").lower() in ("1", "true", "yes")
 
-LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")           # consent + audit + handoff records
+LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")
+# Postgres for the ledger when set (needed when more than one API process runs, e.g. blue/green deploys).
+LEDGER_URL = os.getenv("LEDGER_URL") or (DATABASE_URL if os.getenv("LEDGER_BACKEND") == "postgres" else "")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")                # protects /audit; endpoint is disabled if unset
 HANDOFF_WEBHOOK_URL = os.getenv("HANDOFF_WEBHOOK_URL")    # where human-handoff packets are delivered
 
 # Deployment. WEB_DIST is the built web app (apps/web/dist) that FastAPI serves at /, so the app, the API and
 # /ws/voice share one origin (no CORS needed, and wss:// just works behind the load balancer).
 WEB_DIST = os.getenv("WEB_DIST", str(Path(__file__).resolve().parent.parent / "web" / "dist"))
+# CONSOLE_DIST is the built console (apps/console/dist: chat, documents, staff and admin tools), served at /app.
+CONSOLE_DIST = os.getenv("CONSOLE_DIST", str(Path(__file__).resolve().parent.parent / "console" / "dist"))
 
 # ---- Accounts: Google sign-in exchanged for Sahaj's own JWTs. Auth is disabled (503) until these are set.
 JWT_SECRET = os.getenv("JWT_SECRET")                      # signs access tokens; at least 32 random characters
@@ -166,6 +179,11 @@ DEFAULT_TENANT_NAME = os.getenv("DEFAULT_TENANT_NAME", "Paytm")
 DB_APP_ROLE = os.getenv("DB_APP_ROLE", "sahaj_app")
 
 MARKETING_WEEKLY_CAP = int(os.getenv("MARKETING_WEEKLY_CAP", "3"))   # offers per person per 7 days
+
+# Verified replies are shown a few words at a time (TEXT_STREAMING), then the voice plays.
+TEXT_STREAMING = os.getenv("TEXT_STREAMING", "true").lower() in ("1", "true", "yes")
+STREAM_WORDS_PER_CHUNK = int(os.getenv("STREAM_WORDS_PER_CHUNK", "3"))
+STREAM_DELAY_MS = int(os.getenv("STREAM_DELAY_MS", "30"))
 
 # ---- Memory layers
 # 1. Working memory: the live state of a conversation (Redis when REDIS_URL is set, else this process), so a conversation

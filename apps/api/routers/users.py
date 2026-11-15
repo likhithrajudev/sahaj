@@ -75,7 +75,7 @@ async def export_my_data(user: store.User = Depends(current_user)):
     data = {"exported_at": time.time(), "profile": user.public(), "consents": consents,
             "memory": [{k: v for k, v in m.items() if k != "embedding"} for m in await memory_store.all_for(user.id)],
             "conversations": await episodic.list_for(user.id, 500),
-            "files": await file_store.list_for(user.id),
+            "files": [{k: v for k, v in f.items() if k != "blob_name"} for f in await file_store.list_for(user.id)],
             "financial_inventory": await inventory_store.list_for(user.id) if consent.is_active(user.subject, "financial_profile") else [],
             "feedback": await feedback_store.for_user(user.id),
             "note": "Conversation audit records are kept without your identity (they carry a random session id only)."}

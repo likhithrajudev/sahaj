@@ -5,13 +5,16 @@
 **/.pytest_cache
 **/.cache
 **/dist
+**/cdk.out
 **/*.db
 **/.env
 **/.env.*
 !**/.env.example
 .git
 .github
+infra
 docs
+apps/api/tests
 *.md
 !apps/api/README.md
 .DS_Store

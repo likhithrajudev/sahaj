@@ -28,7 +28,7 @@ def call(method, path, client=("127.0.0.1", 5000), **kw):
 def test_the_console_is_served_and_home_redirects_to_it():
     page = call("GET", "/test/")
     assert page.status_code == 200 and "Sahaj test console" in page.text
-    assert call("GET", "/", follow_redirects=False).headers["location"] == "/test/"
+    assert call("GET", "/", follow_redirects=False).headers["location"] in ("/app/", "/test/")   # the web app once it is built
 
 
 def test_console_script_builds_dom_without_innerhtml():
@@ -62,3 +62,17 @@ def test_dev_login_validates_the_email(monkeypatch):
 def test_google_client_id_is_advertised_when_configured(monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_CLIENT_IDS", ["abc.apps.googleusercontent.com"])
     assert call("GET", "/auth/config").json()["google_client_id"] == "abc.apps.googleusercontent.com"
+
+
+def test_the_web_app_falls_back_for_routes_but_not_for_missing_files(tmp_path):
+    import main
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    (tmp_path / "index.html").write_text("<title>Sahaj</title>")
+    (tmp_path / "app.js").write_text("console.log(1)")
+    app = FastAPI()
+    app.mount("/app", main.SinglePageApp(directory=tmp_path, html=True))
+    c = TestClient(app)
+    assert "Sahaj" in c.get("/app/").text and "Sahaj" in c.get("/app/admin/users").text
+    assert c.get("/app/app.js").text == "console.log(1)"
+    assert c.get("/app/assets/missing.js").status_code == 404

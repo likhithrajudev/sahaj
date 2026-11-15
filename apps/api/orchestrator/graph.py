@@ -124,7 +124,7 @@ async def continue_active(state: State, config: RunnableConfig):
         return {"turn": turn}
     if session.flow and session.flow.active:
         if catalogue.is_sample():
-            goal = session.flow.profile.get("goal")
+            goal = (getattr(session.flow, "profile", None) or {}).get("goal")
             session.flow = None
             turn = await _web_search_turn(state, config, "insurance", _insurance_products_query(goal))
         else:

@@ -129,6 +129,18 @@ async def health():
     return {"status": "ok"}
 
 
+class SinglePageApp(StaticFiles):
+    """The console: a client-side route such as /app/documents gets index.html; a missing file (with an extension) stays a 404."""
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
+                raise
+            return await super().get_response("index.html", scope)
+
+
 class SPAStaticFiles(StaticFiles):
     """Serves the built web app (PWA). Unknown app paths fall back to index.html; API paths and missing files stay 404."""
 
@@ -145,20 +157,27 @@ class SPAStaticFiles(StaticFiles):
         return response
 
 
-# First path segments that belong to the API: never answered with the web app's index.html.
+# First path segments that belong to the API or the console: never answered with the web app's index.html.
+# Keep in sync with API_PATHS in apps/web/vite.config.ts.
 API_PREFIXES = {"auth", "users", "admin", "chat", "consents", "files", "feedback", "usage", "desk", "stt", "ws",
-                "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"}
+                "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test", "app",
+                "calculators", "financial", "platform", "search", "inbox"}
 web_dist = Path(config.WEB_DIST)
 has_web = (web_dist / "index.html").is_file()
+console_dist = Path(config.CONSOLE_DIST)
+has_console = (console_dist / "index.html").is_file()
+test_page = config.TEST_PAGE and config.ENVIRONMENT == "development"
 
-if config.TEST_PAGE and config.ENVIRONMENT == "development":
+if has_console:  # the console (apps/console/dist): customer pages plus the staff and admin tools
+    app.mount("/app", SinglePageApp(directory=console_dist, html=True), name="console")
+
+if test_page:
     # A hand-test console for the whole API: http://127.0.0.1:8000/test/
-    if not has_web:
-        @app.get("/", include_in_schema=False)
-        async def home():
-            return RedirectResponse("/test/")
-
     app.mount("/test", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="test")
 
 if has_web:  # the PWA (apps/web/dist, or WEB_DIST in the image), mounted last so it never shadows the API
     app.mount("/", SPAStaticFiles(directory=web_dist, html=True), name="web")
+else:
+    @app.get("/", include_in_schema=False)
+    async def home():
+        return RedirectResponse("/app/" if has_console else "/test/" if test_page else "/docs")

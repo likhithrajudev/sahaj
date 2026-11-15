@@ -24,6 +24,9 @@ export interface User {
   language: string;
   platform: Platform;
   role: Role;
+  /** The person's storage folder name; unique within the tenant. */
+  username: string | null;
+  tenant: string;
 }
 
 /** POST /auth/google. `id_token` is the ID token Google gives the client after sign-in. */

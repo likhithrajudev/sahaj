@@ -46,10 +46,11 @@ export function Dock() {
   useSpaceToTalk();
 
   const person = useSession(withPerson);
+  const replied = useSession((s) => s.replied);
   const off = state === "budget" || state === "offline" || state === "blocked" || state === "disabled";
   const label = ({
     idle: t("hold"), error: t("hold"), textonly: t("hold"), recording: t("release"), sending: t("sending"),
-    thinking: status ? t(`step_${status}` as StringKey) : t("thinking"), speaking: t("tapStop"),
+    thinking: replied ? t("voiceComing") : status ? t(`step_${status}` as StringKey) : t("thinking"), speaking: t("tapStop"),
     person: t("holdToPerson"), offline: t("youreOffline"), blocked: t("micBlocked"), disabled: t("pleaseWait"),
     budget: t("budgetExceeded"),
   } satisfies Record<DockState, string>)[state];

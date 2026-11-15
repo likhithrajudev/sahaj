@@ -17,7 +17,10 @@ export function RichText({ text, citations = [], onCite, inverse = false }: {
   const out: ReactNode[] = [];
   const order = citations.map((c) => c.id);
   let last = 0;
-  for (const m of text.matchAll(TOKEN)) {
+  const tokens = [...text.matchAll(TOKEN)];
+  // The same source cited sentence after sentence gets one marker, at the end of the run.
+  const repeated = tokens.map((m, i) => !!m[1] && tokens[i + 1]?.[1] === m[1]);
+  tokens.forEach((m, i) => {
     const start = m.index ?? 0;
     const before = text.slice(last, start);
     last = start + m[0].length;
@@ -30,9 +33,14 @@ export function RichText({ text, citations = [], onCite, inverse = false }: {
       last += punct.length;
       out.push(trimmed.slice(0, trimmed.length - word.length));
       const n = order.indexOf(m[1]) + 1;
+      if (repeated[i]) {
+        out.push(word + punct);
+        return;
+      }
       out.push(
         <span key={start} className="whitespace-nowrap">
           {word}
+          {punct}
           <button type="button" onClick={() => n && onCite?.(m[1])} disabled={!n}
             aria-label={`${t("source")} ${n}`}
             className="relative mx-0.5 inline-flex -translate-y-1.5 align-baseline before:absolute before:-inset-3 before:content-['']">
@@ -40,7 +48,6 @@ export function RichText({ text, citations = [], onCite, inverse = false }: {
               {n || "?"}
             </span>
           </button>
-          {punct}
         </span>,
       );
     } else {
@@ -52,7 +59,7 @@ export function RichText({ text, citations = [], onCite, inverse = false }: {
         </span>,
       );
     }
-  }
+  });
   out.push(text.slice(last));
   return <>{out}</>;
 }

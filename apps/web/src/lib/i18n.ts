@@ -117,6 +117,7 @@ const S = {
   step_calculating: ["Working out the numbers…", "गणना कर रहे हैं…"],
   step_thinking: ["Thinking…", "सोच रहे हैं…"],
   step_checking: ["Checking the answer…", "जवाब जाँच रहे हैं…"],
+  voiceComing: ["Getting the voice ready…", "आवाज़ तैयार हो रही है…"],
 
   // messages
   agent_insurance: ["Insurance", "बीमा"],

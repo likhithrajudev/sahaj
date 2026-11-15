@@ -73,6 +73,7 @@ class Session:
         self.id = uuid.uuid4().hex
         self.vault = Vault()
         self.history = []      # PII-masked messages only
+        self.last_suggestions: list = []
         self.agent = None
         self.last_intent: Optional[str] = None
         self.failures = 0
@@ -541,8 +542,11 @@ class Session:
                                                  judged=turn.judge and bool(turn.sources) and not turn.prechecked,
                                                  sources=len(turn.sources), kind=turn.kind),
             "suggestions": suggest.for_intent(self.last_intent, lang, turn.kind,
-                                              bool(turn.handoff_after or self.failures >= MAX_FAILURES)),
+                                              bool(turn.handoff_after or self.failures >= MAX_FAILURES),
+                                              asked=[m["content"] for m in self.history if m.get("role") == "user"][-6:] + [text or ""],
+                                              shown=self.last_suggestions),
         }
+        self.last_suggestions = reply["suggestions"]
         if turn.progress:
             reply["progress"] = {"step": turn.progress[0], "total": turn.progress[1]}
         spoken_text = guardrails.strip_citations(shown)

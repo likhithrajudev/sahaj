@@ -1,7 +1,8 @@
 """Follow-up questions a person can tap, and the trust summary shown with a reply. Both are fixed and deterministic:
 suggestions are written ahead of time for things Sahaj can really do, so tapping one always leads somewhere, and the
 trust summary only reports what the checks actually did."""
-from typing import List, Optional
+import re
+from typing import List, Optional, Sequence
 
 SUGGESTIONS = {
     "insurance_explain": {
@@ -35,13 +36,45 @@ SUGGESTIONS = {
 DEFAULT = "greeting"
 
 
-def for_intent(intent: Optional[str], lang: str, kind: str, handed_off: bool) -> List[str]:
-    """Up to three tappable follow-ups. None while the assistant is itself asking a question (the answer is the
-    next message), and none once a person has taken over."""
+_WORD = re.compile(r"\w+")
+_STOP = {"what", "is", "the", "a", "an", "i", "my", "me", "can", "do", "does", "of", "in", "for", "to", "it", "this",
+         "these", "are", "will", "how", "which", "and", "or", "about", "without", "with", "if", "some"}
+
+
+def _gist(text: str) -> set:
+    return {w[:6] for w in _WORD.findall(text.lower()) if w not in _STOP and len(w) > 2}   # crude stem: prepay ~ prepayment
+
+
+HUMAN = {"Talk to a person", "किसी इंसान से बात करें"}   # an action, never "already asked"
+
+
+def _already(chip: str, asked: List[str]) -> bool:
+    if chip in HUMAN:
+        return False
+    words = _gist(chip)
+    return bool(words) and any(len(words & _gist(q)) / len(words) >= 0.5 for q in asked)
+
+
+def for_intent(intent: Optional[str], lang: str, kind: str, handed_off: bool,
+               asked: Sequence[str] = (), shown: Sequence[str] = ()) -> List[str]:
+    """Up to three tappable follow-ups, skipping what the person already asked and what the last reply offered,
+    topped up from the same domain only (fewer chips beat off-topic ones). None while the assistant is itself asking a question, and none once a person
+    has taken over."""
     if handed_off or kind in ("ask", "confirm", "command"):
         return []
-    table = SUGGESTIONS.get(intent or DEFAULT, SUGGESTIONS[DEFAULT])
-    return table.get(lang) or table["en-IN"]
+    name = intent if intent in SUGGESTIONS else DEFAULT
+    domain = name.split("_")[0]
+    order = [name] + [k for k in SUGGESTIONS if k != name and k.startswith(domain)]
+    if name == DEFAULT:
+        order += [k for k in SUGGESTIONS if k != DEFAULT]
+    picked: List[str] = []
+    for key in order:
+        for chip in SUGGESTIONS[key].get(lang) or SUGGESTIONS[key]["en-IN"]:
+            if chip not in picked and chip not in shown and not _already(chip, list(asked)):
+                picked.append(chip)
+            if len(picked) == 3:
+                return picked
+    return picked
 
 
 def verification(*, blocked: bool, from_cache: bool, prechecked: bool, judged: bool, sources: int, kind: str) -> dict:

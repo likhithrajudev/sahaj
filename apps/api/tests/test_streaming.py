@@ -85,6 +85,8 @@ def test_typed_turns_stream_text_without_any_voice(monkeypatch):
 def test_the_core_rules_allow_a_warm_opening_without_facts():
     from agents.base import CORE
     assert "warm, patient person" in CORE and "states no fact" in CORE and "source tag" in CORE
+
+
 def test_an_unexpected_error_ends_the_turn_not_the_conversation(monkeypatch):
     class Broken:
         async def astream(self, state, config, stream_mode):

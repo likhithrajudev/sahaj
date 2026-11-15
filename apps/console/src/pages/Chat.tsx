@@ -15,9 +15,26 @@ type CaseView = { id: string; reference: string; kind: string; status: string; p
 type Lang = { code: string; name: string; speech_output: boolean };
 
 const STAGES: Record<string, string> = {
-  transcribing: "Listening…", thinking: "Thinking…", checking: "Checking the answer against your documents…",
-  speaking: "Speaking…", waiting_for_executive: "Waiting for a person from the team…",
+  transcribing: "Listening…", speaking: "Speaking…", waiting_for_executive: "Waiting for a person from the team…",
 };
+const STEPS = ["Understanding your question", "Reading the clauses", "Checking every fact"];
+
+// The server reports "thinking" then "checking"; retrieval happens in between, so the middle step follows a beat later.
+function Steps({ stage }: { stage: string }) {
+  const [reading, setReading] = useState(false);
+  useEffect(() => {
+    setReading(false);
+    if (stage !== "thinking") return;
+    const t = setTimeout(() => setReading(true), 1200);
+    return () => clearTimeout(t);
+  }, [stage]);
+  const now = stage === "checking" ? 2 : reading ? 1 : 0;
+  return (
+    <div className="steps" role="status" aria-live="polite">
+      {STEPS.map((label, i) => <span key={label} className={i < now ? "done" : i === now ? "now" : ""}>{label}</span>)}
+    </div>
+  );
+}
 let seq = 0;
 const nid = () => String(++seq);
 
@@ -94,7 +111,7 @@ export function Chat() {
         setItems((xs) => xs.filter((x) => !(x.kind === "consent" && x.purpose === m.purpose)));
         break;
       case "status":
-        setStage(STAGES[m.stage] ?? "");
+        setStage(m.stage in STAGES || m.stage === "checking" || m.stage === "thinking" ? m.stage : "");
         break;
       case "user":
         add({ id: nid(), kind: "me", text: m.text });
@@ -250,7 +267,8 @@ export function Chat() {
               );
           }
         })}
-        {stage && <div className="msg sys typing">{stage}</div>}
+        {(stage === "thinking" || stage === "checking") && <Steps stage={stage} />}
+        {STAGES[stage] && <div className="msg sys typing">{STAGES[stage]}</div>}
       </div>
 
       <form className="composer" onSubmit={(e) => { e.preventDefault(); ask(text); }}>

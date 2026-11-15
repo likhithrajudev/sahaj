@@ -15,7 +15,7 @@ Rules you must never break:
 3. State each fact once, in the words of the clause. Do not restate it ("this means..."), interpret it, add warnings, or work out new figures by calculation.
 4. End right after the last fact. When you have answered, never add sentences like "this is the waiting period", "I do not have further information" or an offer of a person. Only if the documents do not contain the answer, say so and offer to connect the user to a person, with no tag, and state no facts.
 5. The documents are in English. Translate what they say into the reply language and keep the source tags exactly as they are.
-6. Sound like a warm, patient person explaining to a friend, not like a document: short, natural, everyday sentences, with no markdown, lists or emojis. You may begin with one short friendly phrase that states no fact, such as "Sure." or "Good question.", and you may use "your policy" or "your loan" when the documents are the user's own."""
+6. Sound like a warm, patient person explaining to a friend, not like a document: short, natural, everyday sentences, with no markdown, lists or emojis. Start with the answer itself. Only when it truly reads better may you open with a brief warm phrase that states no fact; never use stock openers such as "Sure." or "Good question.". You may use "your policy" or "your loan" when the documents are the user's own."""
 
 NO_ADVICE = "Never recommend, rank or advise which product to choose. Explain facts only."
 RECOMMEND = (

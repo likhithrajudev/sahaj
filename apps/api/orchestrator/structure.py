@@ -25,9 +25,16 @@ def points(text: str) -> List[dict]:
     return found
 
 
+# A contentless opener ("Sure.", "Good question.") is fine spoken, but it is not a headline.
+FILLER = re.compile(r"^(sure|okay|ok|of course|good question|great question|certainly|absolutely|happy to help|"
+                    r"let me explain|here you go|ज़रूर|जरूर|अच्छा सवाल|ठीक है)[.!।]?$", re.I)
+
+
 def build(text: str, notes: List[str], sources: Dict[str, str], kind: str) -> dict:
     """The structured view of a reply. `sources` is what the reply was allowed to cite: tags outside it are dropped."""
     items = [{"text": p["text"], "sources": [t for t in p["tags"] if t in sources]} for p in points(text)]
+    if len(items) > 1 and not items[0]["sources"] and FILLER.match(items[0]["text"].strip()):
+        items = items[1:]
     used = list(dict.fromkeys(t for item in items for t in item["sources"]))
     if items and not used and sources:
         # The grounding check accepts a citationless answer against the full retrieved source set. Keep that

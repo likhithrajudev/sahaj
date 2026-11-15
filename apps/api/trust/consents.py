@@ -42,7 +42,9 @@ async def _erase(user, purpose: str) -> Dict[str, int]:
         return {"offers": await campaigns.forget(user.id)}
     if purpose == "document_analysis":
         from storage import index
-        return {"document_passages": await index.forget(user.id)}
+        from journeys import store as journey_store
+        return {"document_passages": await index.forget(user.id),
+                "demo_drafts": await journey_store.forget(user.id)}
     if purpose == "credit_bureau":
         from financial import store as financial_store
         return {"credit_check_references": await financial_store.forget(user.id, ("credit_check",))}

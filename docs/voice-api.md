@@ -21,11 +21,11 @@ This protocol lets a client use voice activity detection and keep the microphone
 Some conversations need a person: when the customer asks, when they complain or are in distress, when Sahaj keeps failing or keeps having to ask what they mean, and to arrange video KYC. The request becomes a **case** on the executive desk, carrying the masked conversation so far. For V-CIP, the authorised official of the regulated entity conducts the live identity check; Sahaj's current implementation schedules an appointment but does not conduct or verify the session.
 
 **Customer side, on the socket**
-- `{"type":"handoff"}` (the "talk to a person" button), or with `"reason":"video_kyc"|"callback"|"complaint"` and an optional `"note"`. Video KYC needs the `video_kyc` consent first (otherwise you get `consent_required`).
+- `{"type":"handoff"}` (the "talk to a person" button), or with `"reason":"video_kyc"|"callback"|"complaint"` and an optional `"note"`. Video KYC needs the `video_kyc` consent first: without it you get `consent_required`, and the request waits; granting the consent on the socket then opens the case. Saying it ("book my video KYC") works the same way, with a short reply that asks for the consent. Asking for video KYC while a general case is open turns that case into the video KYC case.
 - You get `{"type":"handoff","reference","reason","case":{"id","reference","kind","status":"waiting"|"with_executive","priority"}}`. **From then on, `text` and audio go to the executive, not the AI**; while nobody has picked it up you get `status: waiting_for_executive`.
 - Then: `agent_joined` (`agent.name`), `agent_message` (`text`, `agent`, `at`), `agent_left` (back in the queue), `video_kyc_scheduled` (`scheduled_for`, `meeting_url`), and `handoff_closed` (`status`: `resolved` or `cancelled`, optional `message`), after which the AI answers again.
 - `{"type":"handoff_cancel"}` withdraws the request.
-- The `session` event's `case` field is the open case, if any, so a reconnecting customer goes straight back to their executive.
+- The `session` event's `case` field is the open case, if any, so a reconnecting customer goes straight back to their executive. For video KYC it carries `scheduled_for` and `meeting_url` once booked (both `null` before).
 - Escalation is automatic for complaints (priority high) and distress (urgent): Sahaj acknowledges in one fixed sentence and hands over at once.
 
 **Customer side, over REST:** after `PUT /consents/video_kyc` with the version shown by `GET /consents`, call `POST /cases` (`{"kind":"video_kyc"|"callback"|"complaint"|"help","note"}`). Also: `GET /cases` (their cases and the active thread), `POST /cases/{id}/messages`, `POST /cases/{id}/cancel`. A person has at most one open case; asking again adds to it, and a more serious reason raises its priority.
@@ -147,8 +147,9 @@ With the person's **`memory` consent**, Sahaj remembers a short summary of each 
 
 The reply **text is not streamed token by token**: every reply is checked by the guardrails and a fact-check before anyone sees it, so it arrives whole. What you can stream is progress and audio:
 
-- `{"type":"status","stage":"transcribing"|"thinking"|"checking"|"speaking"}` events during a turn (use them for a typing indicator). `transcribing` is voice only; `speaking` only when audio follows.
+- `{"type":"status","stage":...}` events during a turn: `transcribing`, `thinking`, `searching`/`comparing`/`calculating`, `checking`, `speaking` (use them for a typing indicator). `transcribing` is voice only; `speaking` only when audio follows.
 - The audio reply arrives as binary MP3 chunks, so playback can start before the last chunk.
+- Once a reply has passed the checks, its text is sent a few words at a time as `{"type":"assistant_delta","trace_id":"...","text":"..."}` (source tags left out), followed by the full `assistant` event. Handling the deltas is optional: append them to one bubble and let `assistant` complete it. Turn it off with `TEXT_STREAMING=false`.
 
 **Typed messages** on the socket: `{"type":"text","text":"...","language":"hi-IN","speak":false}`. It takes the same path as speech (same consent, masking and checks) and gets the same events minus the audio, which is sent only when `speak` is true. `language` defaults to the profile language.
 
@@ -232,8 +233,8 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 
 | `type` | Fields | What to do |
 |---|---|---|
-| `session` | `id`, `user`, `memory` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. |
-| `status` | `stage` | Progress of the current turn: `transcribing`, `thinking`, `checking`, `speaking`, or `speech_unavailable` (the written reply is complete; the spoken one failed). No content. |
+| `session` | `id`, `user`, `memory`, `case`, `consents` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. `case` is an open case with a person (carry on with them). `consents` maps each purpose to whether the account already granted it: consent carries over between conversations, so a returning person gets no `consent_required`. |
+| `status` | `stage` | Progress of the current turn, in order: `transcribing`, `thinking`, then `searching`, `comparing` or `calculating` (which work is under way, for hints like "Finding the right documents…"), `checking`, `speaking`; or `speech_unavailable` (the written reply is complete; the spoken one failed) and `waiting_for_executive`. No content. Ignore stages you don't know. |
 | `usage_warning` | `spent_usd`, `budget_usd`, `percent_used` | The person has used 80% of this month's allowance. |
 | `budget_exceeded` | `spent_usd`, `budget_usd`, `resets_at` | The allowance is used up; the message was not processed. |
 | `handoff` | `reference`, `reason`, `case` | A person is now handling the conversation (see [Talking to a person](#talking-to-a-person-customer-executive-desk)). |
@@ -242,20 +243,22 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 | `card` | `kind`, `card`, `trace_id` | Structured data to render as UI, sent just before the matching `assistant` message. See "Cards" below. Always trust the card over the spoken text for figures. |
 | `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets what that purpose allowed it to hold (one event per purpose withdrawn, including dependents). |
 | `user` | `text` | The transcript as a user message. **Personal identifiers are already masked** (for example `[PAN_1]`, `[PHONE_1]`). Show it as is. |
-| `assistant` | `agent`, `text`, `citations`, `structured`, `trace_id` | The answer. `structured.points[].sources` contains source IDs for each claim and `structured.sources[]` maps those IDs to source text. The top-level `citations` field contains the same source entries. Render source tags from structured points against `structured.sources`; keep `trace_id` for support. |
+| `assistant` | `agent`, `text`, `citations`, `structured`, `trace_id` | The answer. `agent` is `insurance`, `loan`, `general` or `advice` (the needs analysis and recommendation). `structured.points[].sources` contains source IDs for each claim and `structured.sources[]` maps those IDs to source text. `citations` holds the same sources, each with `id`, `text` (the full clause), `doc` (document name), `clause` and `title` (null for computed facts) and `body`. Keep `trace_id` for support. `kind` says what produced it (`ask` = a question to the user). `fallback` is true for the safe "I can't confirm that" reply. During the needs analysis, `progress` is `{step, total}`. |
 | *(binary)* | | MP3 chunks of the spoken answer. Join them in order. |
 | `done` | none | The turn is finished. If you received no audio chunks, play nothing. Some languages are text only. |
-| `handoff` | `reference`, `reason` | A human is taking over. Show the `reference` to the user and disable the talk button. The AI stops answering on this session. `reason` is `user_requested`, `guardrail_failures` (two answers in a row could not be verified) or `stuck_in_questions` (three turns of the needs analysis made no progress). |
+| `handoff` | `reference`, `reason` | A human is taking over. Show the `reference` to the user and disable the talk button. The AI stops answering on this session. `reason` is `user_requested`, `guardrail_failures` (two answers in a row could not be verified) or `stuck_in_questions` (three turns of the needs analysis made no progress). If audio is sent after a handoff, the server repeats this event with `reference` only (no `reason`). |
 | `error` | `message` | The turn failed (silence, bad audio, upstream failure). No `done` follows. The socket stays open, so let the user try again. |
 
 ### Cards
 
-| `kind` | When | Contents |
+Render by `card.type`. The event's `kind` is the turn that produced it (`confirm`, `recommendation`, `compare`, `calc`). Typed in `packages/contracts`.
+
+| `card.type` | When | Contents |
 |---|---|---|
-| `profile_summary` | The needs analysis is asking the user to confirm | `details`: the complete list of what Sahaj understood, as short lines. **Display it.** The spoken read-back can be shorter, and the user must see exactly what will be used before saying yes. |
-| `recommendation` | After the user confirms | `suggested_cover` (`amount`, `basis`, `note`), `plans` (ranked; each with `name`, `insurer`, `cover`, `annual_premium`, `highlights`, `reasons`, `criteria` showing how it scored), `disclosures` (all of them, always show), `sample_data`, `indicative_premiums`. |
-| `comparison` | The user asks to compare plans | `plans`, each with `rows` of `[label, value]` pairs: render as a table. |
-| `calc` | A loan calculation (EMI, or interest saved by prepaying) | `kind` (`emi` or `prepayment`), `inputs` (what the user gave) and `result`. The numbers are computed by code, so show them as given. |
+| `profile_summary` (`kind: confirm`) | The needs analysis is asking the user to confirm | `details`: the complete list of what Sahaj understood, as short lines. **Display it.** The spoken read-back can be shorter, and the user must see exactly what will be used before saying yes. |
+| `recommendation` (`kind: recommendation`) | After the user confirms | `goal`, `suggested_cover` (`amount`, `basis`, `note` or null), `plans` (up to 3, ranked; each with `rank`, `product_id`, `name`, `insurer`, `cover`, `annual_premium`, `highlights`, `reasons`, `meets_suggested_cover`, `criteria` keyed by criterion with `value`, `score`, `weight`, `contribution`), `disclosures` (all of them, always show), `disclosures_version`, `sample_data`, `indicative_premiums`. |
+| `comparison` (`kind: compare`) | The user asks to compare plans | `goal`, `sample_data`, `premiums_included`, `plans`, each with `id`, `name`, `insurer` and `rows` of `[label, value]` pairs: render as a table. |
+| `loan_calculation` (`kind: calc`) | A loan calculation (EMI, or interest saved by prepaying) | `card.kind` (`emi` or `prepayment`), `inputs` (`principal`, `annual_rate_percent`, `tenure_months`, plus `prepay_amount` and `mode` for prepayment) and `result` (`emi`, `total_payment`, `total_interest`; or `emi_before/after`, `months_before/after/saved`, `interest_before/after/saved`). The numbers are computed by code, so show them as given. |
 
 The recommendation's ranking, cover and premiums are computed by a deterministic engine, not by the language model, so the card is the source of truth. If `sample_data` is true the plans are fictional development data and must not be presented as real products.
 
@@ -329,7 +332,7 @@ rec.onstop = async () => { ws.send(await new Blob(parts).arrayBuffer()); parts =
 - Conversation history is in memory only. The audit ledger is SQLite for now (Postgres planned).
 - Documents are **sample data** (`apps/api/knowledge/`). Answers are only as correct as the documents loaded.
 - Questions the documents cannot answer, or answers the automatic checks cannot confirm, return "I can't confirm that…". In testing this is the intended outcome for questions that are related to a policy but not covered by it, and it also happens occasionally for answerable ones (the checks fail closed).
-- Safari records mp4, not webm. Untested.
+- Recordings may be WebM (Chrome, Android) or MP4 (Safari, iPhone): the server detects the format from the bytes, so send the recording as is.
 
 ## Server setup (backend team)
 

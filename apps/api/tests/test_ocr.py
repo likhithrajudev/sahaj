@@ -135,6 +135,7 @@ def test_scans_and_photos_are_read_by_ocr_masked_and_charged_to_the_person(sarva
     from rag import store as rag_store
     from storage import files, index
     from tests.test_documents import embed, make_pdf
+    from trust import consent
     from usage import ledger as usage_ledger
 
     monkeypatch.setattr(config, "LEDGER_DB", str(tmp_path / "ledger.db"))
@@ -157,6 +158,8 @@ def test_scans_and_photos_are_read_by_ocr_masked_and_charged_to_the_person(sarva
             async with pool.connection() as conn:
                 await conn.execute("TRUNCATE users CASCADE")
             user = await store.upsert_google_user({"sub": "g-1", "email": "a@example.com"}, "web")
+            consent.grant(user.subject, "documents")
+            consent.grant(user.subject, "document_analysis")
 
             async def add(content_type, data):
                 row = await files.add(user.id, "x", content_type, data, f"{user.username}/x/{len(data)}{content_type[-3:]}", "document")

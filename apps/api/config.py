@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(".env.local")
@@ -53,6 +54,12 @@ LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")
 LEDGER_URL = os.getenv("LEDGER_URL") or (DATABASE_URL if os.getenv("LEDGER_BACKEND") == "postgres" else "")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")                # protects /audit; endpoint is disabled if unset
 HANDOFF_WEBHOOK_URL = os.getenv("HANDOFF_WEBHOOK_URL")    # where human-handoff packets are delivered
+
+# Deployment. WEB_DIST is the built web app (apps/web/dist) that FastAPI serves at /, so the app, the API and
+# /ws/voice share one origin (no CORS needed, and wss:// just works behind the load balancer).
+WEB_DIST = os.getenv("WEB_DIST", str(Path(__file__).resolve().parent.parent / "web" / "dist"))
+# CONSOLE_DIST is the built console (apps/console/dist: chat, documents, staff and admin tools), served at /app.
+CONSOLE_DIST = os.getenv("CONSOLE_DIST", str(Path(__file__).resolve().parent.parent / "console" / "dist"))
 
 # ---- Accounts: Google sign-in exchanged for Sahaj's own JWTs. Auth is disabled (503) until these are set.
 JWT_SECRET = os.getenv("JWT_SECRET")                      # signs access tokens; at least 32 random characters
@@ -110,8 +117,6 @@ MAX_FILES_PER_USER = int(os.getenv("MAX_FILES_PER_USER", "50"))
 # A sign-in that needs no Google account, for the test page. Works only when ENVIRONMENT=development AND the caller is
 # on this machine, so a deployed instance cannot be signed into this way even if the flag is left on.
 DEV_LOGIN = os.getenv("DEV_LOGIN", "false").lower() in ("1", "true", "yes")
-# The built web app (apps/web/dist), served at /app when present.
-WEB_DIST = os.getenv("WEB_DIST", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "dist"))
 # Serve the test console at /test (development only).
 TEST_PAGE = os.getenv("TEST_PAGE", "true").lower() in ("1", "true", "yes")
 

@@ -4,7 +4,7 @@ Exact values live in session memory only. The audit trail gets `bands()`, ranges
 """
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from advisory.catalogue import money
 from advisory.rules import CRORE, LAKH
@@ -175,6 +175,15 @@ class Profile:
             elif spec.name not in self.values:
                 return spec
         return None
+
+    def progress(self) -> Optional[Tuple[int, int]]:
+        """(answered, total) questions for the person's goal, for a progress bar. None until the goal is known,
+        because the number of questions depends on it."""
+        if self.get("goal") not in GOALS:
+            return None
+        relevant = self.relevant()
+        answered = sum(1 for s in relevant if (self.asked_optional if s.name == "priorities" else s.name in self.values))
+        return answered, len(relevant)
 
     def complete(self) -> bool:
         return self.get("goal") in GOALS and self.next_missing() is None

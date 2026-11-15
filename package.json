@@ -5,12 +5,39 @@
   "scripts": {
     "dev:api": "pnpm --filter @sahaj/api dev",
     "dev:web": "pnpm --filter @sahaj/web dev",
+    "dev:console": "pnpm --filter @sahaj/console dev",
     "test:api": "pnpm --filter @sahaj/api test",
     "db:up": "docker compose up -d db",
     "typecheck": "pnpm -r --if-present typecheck",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "docker:build": "docker build -t sahaj .",
+    "tunnel": "ngrok http 5173"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "vaul": {
+        "peerDependencies": {
+          "@types/react": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          }
+        }
+      },
+      "vite-plugin-pwa": {
+        "peerDependencies": {
+          "@types/react": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          }
+        }
+      }
+    }
   }
 }

@@ -6,6 +6,9 @@ from pathlib import Path
 # before `config` is imported: loading .env.local does not override variables that are already set.
 for _name in ("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING"):
     os.environ[_name] = "false"
+# Tests see the app as it is without a web build, whatever apps/web/dist holds on this machine. The PWA mount has its
+# own tests (test_web_app.py) with a temporary build.
+os.environ["WEB_DIST"] = str(Path(__file__).resolve().parent / "__no_web_build__")
 
 import pytest
 

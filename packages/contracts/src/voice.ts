@@ -1,14 +1,26 @@
 /**
- * Voice WebSocket protocol (`/ws/voice`). Source of truth: docs/voice-api.md.
- * Keep in sync with apps/api/routers/voice.py and the orchestrator events it emits.
+ * Voice WebSocket protocol (`/ws/voice`).
+ *
+ * Source of truth is the backend, not the prose docs:
+ *   events  apps/api/orchestrator/session.py (desk events: apps/api/desk, routers/desk.py)
+ *   cards   apps/api/advisory/flow.py (profile_summary, recommendation)
+ *           apps/api/advisory/compare.py (comparison)
+ *           apps/api/loan/flow.py + loan/calc.py (loan_calculation)
+ *   consent apps/api/trust/consent.py
+ * Update this file in the same change as any of those.
  */
 
 import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
-export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records" | "video_kyc" | "financial_application" | "credit_bureau" | "financial_profile";
-export type AgentName = "insurance" | "loan" | "general";
+export type ConsentPurpose =
+  | "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records"
+  | "video_kyc" | "financial_application" | "credit_bureau" | "financial_profile";
+/** "advice" is the needs-analysis / recommendation flow. */
+export type AgentName = "insurance" | "loan" | "general" | "advice";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
+
+export type InsuranceGoal = "health" | "term" | "whole_life";
 
 /** The open desk case: while it exists, messages go to the executive, not the AI. */
 export interface CaseView {
@@ -17,15 +29,33 @@ export interface CaseView {
   kind: "handoff" | "complaint" | "video_kyc" | "callback";
   status: "waiting" | "with_executive";
   priority: "urgent" | "high" | "normal";
+  /** Video KYC: the booked appointment (ISO time with timezone) and its HTTPS link, once an executive has set them. */
+  scheduled_for?: string | null;
+  meeting_url?: string | null;
 }
 
 export interface Citation {
-  /** Source tag as it appears in the answer text, e.g. "policy:3.2". */
+  /** Tag as it appears in the answer text without brackets, e.g. "health-lotus-care:3.2". */
   id: string;
+  /** The full clause (or computed fact) the tag points to. */
   text: string;
+  /** Document name for display, e.g. "Lotus Care (SAMPLE)", "Loan calculation". */
+  doc: string;
+  /** Clause number ("3.2") and title for document clauses; null for facts the code computed. */
+  clause: string | null;
+  title: string | null;
+  /** The clause text without its number and title. */
+  body: string;
+  file_id?: string;
+  page?: number;
 }
 
-// ---------- Client -> server (JSON text frames; audio is sent as a binary frame) ----------
+/** What produced an assistant message. */
+export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc" | "command" | "document_answer";
+
+// ---------------------------------------------------------------- client -> server
+// Audio: send one complete recording (max 30 s; WebM or Safari's MP4, detected server-side) as a binary frame,
+// only after done/error/handoff.
 
 export interface ConsentMessage {
   type: "consent";
@@ -56,12 +86,26 @@ export interface TextMessage {
   speak?: boolean;
 }
 
-export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
+export interface DocumentScope {
+  id: string;
+  name: string;
+  unavailable?: boolean;
+}
+
+export interface DocumentScopeEvent {
+  type: "document_scope";
+  document: DocumentScope | null;
+  error?: string;
+}
+
+export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage
+  | { type: "select_document"; file_id: string | null };
 
 /** Stream endpoint controls. Audio arrives in binary WebSocket frames until audio_end or audio_cancel. */
 export type VoiceStreamControl = { type: "audio_end" } | { type: "audio_cancel" };
 
-// ---------- Server -> client (JSON text frames; MP3 chunks arrive as binary frames) ----------
+// ---------------------------------------------------------------- server -> client
+// Binary frames are MP3 chunks of the spoken answer; join them in order and play on `done`.
 
 export interface SessionEvent {
   type: "session";
@@ -71,6 +115,11 @@ export interface SessionEvent {
   memory: boolean;
   /** A person is already handling this customer: carry on with them. */
   case: CaseView | null;
+  /** True when this conversation was restored from a saved one rather than started fresh. */
+  resumed: boolean;
+  selected_document?: DocumentScope | null;
+  /** Which consents the account already has (they carry over between conversations and devices). */
+  consents: Partial<Record<ConsentPurpose | "video_kyc", boolean>>;
 }
 
 /** Close code when the access token is missing, invalid or expired: refresh it (POST /auth/refresh) and reconnect. */
@@ -81,7 +130,7 @@ export interface ConsentRequiredEvent {
   purpose: ConsentPurpose;
   title: string;
   version: string;
-  /** Show verbatim with accept and decline buttons. */
+  /** Show verbatim with accept and decline actions. */
   text: string;
   required: boolean;
   requires: ConsentPurpose | null;
@@ -95,8 +144,15 @@ export interface ConsentStatusEvent {
   status: "granted" | "revoked";
 }
 
-/** speech_unavailable: the spoken reply could not be produced; the written reply is complete. */
-export type Stage = "transcribing" | "thinking" | "checking" | "speaking" | "speech_unavailable" | "waiting_for_executive";
+/**
+ * Where a turn is, in order: transcribing → thinking → (searching | comparing | calculating) → checking → speaking.
+ * searching/comparing/calculating come from the graph node doing the work, for "Finding the right documents…" hints.
+ * speech_unavailable: the spoken reply could not be produced; the written reply is complete.
+ * Clients should ignore stages they don't know.
+ */
+export type Stage =
+  | "transcribing" | "thinking" | "searching" | "comparing" | "calculating" | "checking" | "speaking"
+  | "speech_unavailable" | "waiting_for_executive";
 
 /** Progress through a turn. Carries no content: the reply arrives whole, after the guardrails have passed it. */
 export interface StatusEvent {
@@ -125,18 +181,18 @@ export interface InboxEvent { type: "inbox"; item: { title: string; body: string
 
 export interface UserEvent {
   type: "user";
-  /** Masked transcript (e.g. "[PAN_1]"). */
+  /** Transcript with identifiers already masked, e.g. "[PAN_1]". See MASK_TAG. */
   text: string;
 }
 
 /** The reply split into statements, each with the sources behind it. Built from the verified `text`, nothing added. */
 export interface StructuredReply {
-  kind: "answer" | "ask" | "confirm" | "recommendation" | "compare" | "command";
+  kind: ReplyKind;
   /** The first statement: a one-line headline. */
   summary: string;
   points: { text: string; sources: string[] }[];
-  /** Every source used, once; `points[].sources` refer to these ids. */
-  sources: Citation[];
+  /** Every source used, once; `points[].sources` refer to these ids. Display details are in `citations`. */
+  sources: { id: string; text: string }[];
   /** Fixed text such as disclosures, kept apart from the answer. */
   notes: string[];
 }
@@ -154,7 +210,7 @@ export interface Verification {
 export interface AssistantEvent {
   type: "assistant";
   agent: AgentName;
-  /** The whole reply, source tags included. Use `structured` to render it as a list with source chips. */
+  /** The whole reply, source tags included ("[health-lotus-care:3.2]", see CITATION_TAG). `structured` splits it into points. */
   text: string;
   citations: Citation[];
   structured: StructuredReply;
@@ -162,6 +218,20 @@ export interface AssistantEvent {
   /** Up to three follow-up questions to show as chips; send one back as a `text` message. Empty while Sahaj is asking something. */
   suggestions: string[];
   trace_id: string;
+  /** "ask" = Sahaj is asking a question (clarifying, or the next needs-analysis question). */
+  kind: ReplyKind;
+  /** True when the checks blocked the answer and this is the safe "I can't confirm that…" reply. */
+  fallback: boolean;
+  /** Needs analysis only: which question this is, for "Understanding your needs · 4 of 9". */
+  progress?: { step: number; total: number };
+}
+
+/** A few words of a reply that has already passed the checks, sent just before its `assistant` event so the text can
+ *  appear as it is "typed". Source tags are left out; the `assistant` event carries the whole reply. Optional to handle. */
+export interface AssistantDeltaEvent {
+  type: "assistant_delta";
+  trace_id: string;
+  text: string;
 }
 
 export interface DoneEvent {
@@ -187,40 +257,109 @@ export interface ErrorEvent {
   message: string;
 }
 
-// ---------- Cards (structured UI, sent just before the matching assistant message) ----------
+// ---------------------------------------------------------------- cards
+// Sent as {type:"card"} just before the matching assistant message. Discriminate on `card.type`.
 
 export interface ProfileSummaryCard {
+  type: "profile_summary";
+  /** Every detail Sahaj understood, as short lines. Must be displayed in full. */
   details: string[];
 }
 
+export interface CriterionScore {
+  /** Raw value of the criterion for this plan (e.g. a premium or a ratio). */
+  value: number;
+  /** 0..1, normalised across the plans compared (1 = best). */
+  score: number;
+  /** 0..1, share of the total; weights sum to 1. */
+  weight: number;
+  /** score × weight. */
+  contribution: number;
+}
+
 export interface RecommendedPlan {
+  rank: number;
+  product_id: string;
   name: string;
   insurer: string;
   cover: number;
   annual_premium: number;
   highlights: string[];
+  /** May be empty: only criteria where this plan is strictly best. */
   reasons: string[];
-  criteria: Record<string, unknown>;
+  meets_suggested_cover: boolean;
+  /** Keyed by criterion name. */
+  criteria: Record<string, CriterionScore>;
 }
 
 export interface RecommendationCard {
-  suggested_cover: { amount: number; basis: string; note: string };
-  plans: RecommendedPlan[];
-  disclosures: string[];
+  type: "recommendation";
+  goal: InsuranceGoal;
   sample_data: boolean;
   indicative_premiums: boolean;
+  suggested_cover: {
+    /** Rupees. 0 when no extra cover is needed. */
+    amount: number;
+    /** How the amount was worked out, in words. */
+    basis: string;
+    note: string | null;
+  };
+  /** Up to 3, ranked. May be empty when nothing matched. */
+  plans: RecommendedPlan[];
+  /** Fixed text. Always show all of them. */
+  disclosures: string[];
+  disclosures_version: string;
+}
+
+export interface ComparedPlan {
+  id: string;
+  name: string;
+  insurer: string;
+  rows: [label: string, value: string][];
 }
 
 export interface ComparisonCard {
-  plans: { name: string; rows: [label: string, value: string][] }[];
+  type: "comparison";
+  goal: InsuranceGoal;
+  plans: ComparedPlan[];
+  sample_data: boolean;
+  /** True when a row "indicative yearly premium for the suggested cover" is included. */
+  premiums_included: boolean;
 }
 
-export interface CalcCard {
-  kind: "emi" | "prepayment";
-  inputs: Record<string, unknown>;
-  result: Record<string, unknown>;
+export type RepaymentMode = "reduce_tenure" | "reduce_emi";
+
+export interface LoanInputs {
+  /** Loan amount, or the outstanding amount for a prepayment. Rupees. */
+  principal: number;
+  annual_rate_percent: number;
+  tenure_months: number;
+  prepay_amount?: number;
+  mode?: RepaymentMode;
 }
 
+export interface EmiResult {
+  emi: number;
+  total_payment: number;
+  total_interest: number;
+}
+
+export interface PrepaymentResult {
+  emi_before: number;
+  emi_after: number;
+  months_before: number;
+  months_after: number;
+  months_saved: number;
+  interest_before: number;
+  interest_after: number;
+  interest_saved: number;
+}
+
+export type LoanCalculationCard =
+  | { type: "loan_calculation"; kind: "emi"; inputs: LoanInputs; result: EmiResult }
+  | { type: "loan_calculation"; kind: "prepayment"; inputs: LoanInputs & { prepay_amount: number }; result: PrepaymentResult };
+
+/** Arrives with kind "ask": the user must review the provider and consent before anything is submitted. */
 export interface FinancialWorkflowCard {
   type: "financial_workflow";
   action: "insurance_purchase" | "loan_application" | "credit_check";
@@ -230,21 +369,23 @@ export interface FinancialWorkflowCard {
   requires_user_confirmation: true;
 }
 
-export interface CardPayloads {
-  profile_summary: ProfileSummaryCard;
-  recommendation: RecommendationCard;
-  comparison: ComparisonCard;
-  calc: CalcCard;
-  ask: FinancialWorkflowCard;
+export type Card = ProfileSummaryCard | RecommendationCard | ComparisonCard | LoanCalculationCard | FinancialWorkflowCard;
+export type CardType = Card["type"];
+
+/** The turn kind that produced the card. Prefer `card.type` for rendering. */
+export type TurnKind = "confirm" | "recommendation" | "compare" | "calc" | "ask";
+
+export interface CardEvent {
+  type: "card";
+  kind: TurnKind;
+  card: Card;
+  trace_id: string;
 }
 
-export type CardKind = keyof CardPayloads;
-
-export type CardEvent = {
-  [K in CardKind]: { type: "card"; kind: K; card: CardPayloads[K]; trace_id: string };
-}[CardKind];
+// ---------------------------------------------------------------- unions
 
 export type ServerEvent =
+  | DocumentScopeEvent
   | SessionEvent
   | ConsentRequiredEvent
   | ConsentStatusEvent
@@ -254,6 +395,7 @@ export type ServerEvent =
   | BudgetExceededEvent
   | CardEvent
   | UserEvent
+  | AssistantDeltaEvent
   | AssistantEvent
   | DoneEvent
   | HandoffEvent
@@ -265,3 +407,51 @@ export type ServerEvent =
   | ErrorEvent;
 
 export type ServerEventType = ServerEvent["type"];
+export type ServerEventOf<T extends ServerEventType> = Extract<ServerEvent, { type: T }>;
+
+// ---------------------------------------------------------------- helpers
+
+/** Matches citation tags in assistant text; group 1 is the citation id. Mirrors trust/guardrails.py CITE. */
+export const CITATION_TAG = /\[([\w.\-]+:[\w.\-]+)\]/g;
+
+export type MaskedField = "EMAIL" | "UPI" | "PAN" | "AADHAAR" | "PHONE" | "ACCOUNT";
+
+/** Matches masked identifiers like "[PAN_1]"; group 1 is the field, group 2 the index. Mirrors trust/pii.py. */
+export const MASK_TAG = /\[(EMAIL|UPI|PAN|AADHAAR|PHONE|ACCOUNT)_(\d+)\]/g;
+
+/** Max length of one recording, in seconds. */
+export const MAX_RECORDING_SECONDS = 30;
+
+/** Parses a JSON text frame. Returns null for anything that is not a known server event. */
+export function parseServerEvent(raw: string): ServerEvent | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null || !("type" in data)) return null;
+  return SERVER_EVENT_TYPES.has((data as { type: string }).type) ? (data as ServerEvent) : null;
+}
+
+const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set<ServerEventType>([
+  "session",
+  "document_scope",
+  "consent_required",
+  "consent",
+  "status",
+  "usage_warning",
+  "budget_exceeded",
+  "card",
+  "user",
+  "assistant_delta",
+  "assistant",
+  "done",
+  "handoff",
+  "agent_joined",
+  "agent_left",
+  "agent_message",
+  "video_kyc_scheduled",
+  "handoff_closed",
+  "error",
+]);

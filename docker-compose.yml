@@ -8,7 +8,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18 images keep data in a versioned subfolder, so the volume mounts one level up
+      - pgdata:/var/lib/postgresql
 
   # Observability: `docker compose --profile observability up -d`. Prometheus http://localhost:9090, Grafana http://localhost:3001
   prometheus:

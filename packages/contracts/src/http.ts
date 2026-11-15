@@ -111,6 +111,8 @@ export interface StoredFile {
   index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "over_budget" | "failed";
   indexed_chunks: number;
   category: string;
+  indexed_pages?: number[];
+  total_pages?: number | null;
 }
 
 export interface EmiCalculationRequest {

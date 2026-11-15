@@ -44,7 +44,9 @@ def _looks_personal(text: str) -> bool:
 GREETINGS = {"hi", "hii", "hello", "hey", "hey there", "namaste", "namaskar", "namaskaram", "vanakkam", "good morning",
              "good afternoon", "good evening", "नमस्ते", "नमस्कार", "हेलो", "हाय"}
 HUMAN = {"talk to a human", "talk to a person", "speak to a human", "speak to a person", "human please", "agent please",
-         "connect me to a human", "connect me to a person", "i want a human", "i want to talk to a person"}
+         "connect me to a human", "connect me to a person", "i want a human", "i want to talk to a person",
+         "video kyc", "book my video kyc", "book video kyc", "schedule my video kyc", "i want to do video kyc",
+         "start video kyc", "do my video kyc", "वीडियो केवाईसी", "मेरा वीडियो केवाईसी बुक करें"}
 
 
 def fast_intent(text: str) -> Optional[Intent]:
@@ -59,7 +61,8 @@ def fast_intent(text: str) -> Optional[Intent]:
     return None
 
 
-async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Optional[str]) -> Intent:
+async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Optional[str], *,
+                   cache_query: bool = True) -> Intent:
     """What the user wants. If the model's answer cannot be parsed twice, returns out_of_scope with confidence 0,
     which the graph treats as 'ask the user to clarify' rather than guessing."""
     if not in_flow and (quick := fast_intent(text)):
@@ -68,7 +71,7 @@ async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Op
     messages = PROMPT.format_messages(system=procedural.text("intent.classifier"), previous=previous or "none",
                                       in_flow="yes" if in_flow else "no", asking=asking or "nothing", message=text)
     plain = [{"role": {"system": "system", "human": "user"}[m.type], "content": m.content} for m in messages]
-    use_cache = cache.CLASSIFIER_CACHE if config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text) else None
+    use_cache = cache.CLASSIFIER_CACHE if cache_query and config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text) else None
 
     for attempt in range(2):
         reply = await llm.chat(plain, purpose="classify", cache=use_cache)

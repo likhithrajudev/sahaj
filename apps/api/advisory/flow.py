@@ -131,7 +131,11 @@ class AdviceFlow:
         if missing is None:
             return await self._confirm(language)
         self.asking = missing.name
-        return await self._ask(f"ask the user {self.profile.question_for(missing)}", language)
+        turn = await self._ask(f"ask the user {self.profile.question_for(missing)}", language)
+        progress = self.profile.progress()
+        if progress:  # the question being asked is number answered + 1
+            turn.progress = (min(progress[0] + 1, progress[1]), progress[1])
+        return turn
 
     async def _ask(self, instruction: str, language: str) -> Turn:
         return Turn(text=await extract.phrase(instruction, language), kind="ask", agent="advice", judge=False,
@@ -149,8 +153,10 @@ class AdviceFlow:
         # The complete details are also sent as data, so a spoken read-back that leaves something out cannot be
         # "confirmed" unseen. The screen shows exactly what will be used.
         card = {"type": "profile_summary", "details": sources["profile:summary"].rstrip(".").split("; ")}
+        total = (self.profile.progress() or (0, 0))[1]
         return Turn(text=text, kind="confirm", agent="advice", sources=sources, detailed=True, asked=asked, card=card,
-                    fallback=_pick(CONFIRM_FALLBACK, self._lc), on_blocked=revert, prechecked=passed)
+                    fallback=_pick(CONFIRM_FALLBACK, self._lc), on_blocked=revert, prechecked=passed,
+                    progress=(total, total) if total else None)
 
     async def _recommend(self, language: str, consent_ok: bool, trace) -> Turn:
         try:

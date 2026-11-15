@@ -9,6 +9,7 @@ class Turn:
     kind: str = "answer"                 # answer | ask | confirm | recommendation | compare | command
     agent: str = "insurance"
     sources: Dict[str, str] = field(default_factory=dict)   # what the text may cite
+    citation_metadata: Dict[str, dict] = field(default_factory=dict)
     allow_recommendation: bool = False   # True only for text built from the recommendation engine's facts
     judge: bool = True                   # also run the model fact-check (needs sources)
     detailed: bool = False               # the fact-check need not insist every fact is on point
@@ -23,3 +24,4 @@ class Turn:
     request_consent: Optional[str] = None  # ask the person for this consent before anything else
     cache_key: Optional[tuple] = None      # store this reply in the verified-answer cache if it passes the checks
     from_cache: bool = False               # served from the verified-answer cache (already checked when stored)
+    progress: Optional[tuple] = None       # (step, total) of the needs analysis, for the UI's progress bar

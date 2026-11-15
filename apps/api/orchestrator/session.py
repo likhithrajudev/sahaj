@@ -4,23 +4,25 @@ import logging
 import re
 import time
 import uuid
+from contextlib import nullcontext
 from typing import Optional
 
 import httpx
 import psycopg
 from fastapi import WebSocket
+from langsmith import tracing_context
 
 import config
 from advisory.flow import AdviceFlow
 from auth.store import Unavailable, User
 from loan.flow import LoanCalc
 from memory import episodic, procedural, semantic, service as memory, store as memory_store, working
-from orchestrator import structure, suggest
-from orchestrator import commands
+from orchestrator import citations, commands, structure, suggest
 from orchestrator.graph import GRAPH
 from orchestrator.turn import Turn
 from observability import metrics, tracing
 from services import telemetry
+from services.audio import sniff as sniff_audio
 from storage import records
 from usage import ledger as usage_ledger, pricing
 from services.stt import transcribe_audio
@@ -44,6 +46,10 @@ def _inventory_request(text: str) -> bool:
     action = re.search(r"\b(track|add|save|update|record|remember|manage)\b|रख|जोड़|अपडेट|सेव|दर्ज|रिकॉर्ड", text, re.I)
     asset = re.search(r"\b(credit.?cards?|cards?|em[ií]s?|loans?|inventory|due dates?)\b|क्रेडिट.?कार्ड|कार्ड|ईएमआई|लोन|किस्त", text, re.I)
     return bool(action and asset and not re.search(r"\bloan application\b", text, re.I))
+
+
+def _iso(value):
+    return value.isoformat() if hasattr(value, "isoformat") else value
 
 
 class Session:
@@ -78,6 +84,8 @@ class Session:
         self.inventory_flow = None
         self.pending_inventory = None
         self.pending = None                      # (text, language) waiting for the person's consent to analyse
+        self.pending_kyc: Optional[str] = None   # a video KYC request (its note) waiting for the video_kyc consent
+        self.selected_document: Optional[dict] = None
         self.focus = []                          # plans just recommended or compared: what "the first one" means
 
     async def start(self, ask_consent: bool = True) -> None:
@@ -90,7 +98,10 @@ class Session:
         except Exception as e:
             log.warning("Could not check for an open case: %s", e)
         await self.ws.send_json({"type": "session", "id": self.id, "user": self.user.public(),
-                                 "memory": self.memory is not None, "case": self._case_view(), "resumed": resumed})
+                                 "memory": self.memory is not None, "case": self._case_view(), "resumed": resumed,
+                                 "selected_document": self.selected_document,
+                                 # consent belongs to the account: a returning person may already have given it
+                                 "consents": {p: consent.is_active(self.user.subject, p) for p in consent.PURPOSES}})
         if ask_consent:
             await self._has_consent()
 
@@ -99,7 +110,8 @@ class Session:
         and no needs-analysis or calculator figures."""
         return {"session_id": self.id, "user_id": self.user.id, "history": self.history, "last_intent": self.last_intent,
                 "focus": self.focus, "clarifications": self.clarifications, "turns": self._turns, "channel": self.channel,
-                "started_at": self.started_at.isoformat()}
+                "started_at": self.started_at.isoformat(),
+                "selected_document_id": self.selected_document["id"] if self.selected_document else None}
 
     async def restore(self, session_id: str) -> bool:
         """Pick up a conversation from working memory (this person's own only: the key includes tenant and user)."""
@@ -111,6 +123,11 @@ class Session:
         self.history, self.last_intent, self.focus = state["history"], state["last_intent"], state["focus"]
         self.clarifications, self._turns, self.channel = state["clarifications"], state["turns"], state["channel"]
         self.started_at = datetime.fromisoformat(state["started_at"])
+        saved = state.get("selected_document_id")
+        if saved:
+            self.selected_document = await self._readable_pdf(saved) or {
+                "id": saved, "name": "Selected PDF", "unavailable": True,
+            }
         return True
 
     async def close(self) -> None:
@@ -154,11 +171,23 @@ class Session:
         elif kind == "handoff":
             reason = data.get("reason") if data.get("reason") in ("video_kyc", "callback", "complaint") else "user_requested"
             note = data.get("note") if isinstance(data.get("note"), str) else None
-            if reason == "video_kyc" and not consent.is_active(self.user.subject, "video_kyc"):
-                return await self.ws.send_json({"type": "consent_required", **consent.required("video_kyc")})
             trace = Trace(self.id)
-            await self._handoff(reason, trace, note=self.vault.mask(normalise_digits(note[:500])) if note else None)
+            await self._ask_for_person(reason, trace, note=self.vault.mask(normalise_digits(note[:500])) if note else None)
             trace.save()
+        elif kind == "select_document":
+            file_id = data.get("file_id")
+            if file_id is not None:
+                selected = await self._readable_pdf(file_id)
+                if selected is None:
+                    await self.ws.send_json({"type": "document_scope", "document": self.selected_document,
+                                             "error": "Choose an indexed PDF you have allowed Sahaj to read."})
+                    return
+            else:
+                selected = None
+            self.selected_document = selected
+            if consent.is_active(self.user.subject, "conversation"):
+                await working.save(self.user, self.id, self.snapshot())
+            await self.ws.send_json({"type": "document_scope", "document": selected})
         elif kind == "handoff_cancel":
             await self._cancel_case()
         elif kind == "text":
@@ -168,6 +197,20 @@ class Session:
             await self.on_text(text, language if isinstance(language, str) else None, data.get("speak") is True)
         else:
             await self._error(f"Unknown message type: {kind}")
+
+    async def _readable_pdf(self, file_id) -> Optional[dict]:
+        from storage import files
+
+        try:
+            file_id = str(uuid.UUID(file_id)) if isinstance(file_id, str) else None
+        except ValueError:
+            return None
+        if not file_id or not consent.is_active(self.user.subject, "document_analysis"):
+            return None
+        row = await files.get(self.user.id, file_id)
+        if row and row["content_type"] == "application/pdf" and row["index_status"] == "ready":
+            return {"id": file_id, "name": row["filename"]}
+        return None
 
     async def _on_consent(self, data: dict) -> None:
         """A consent button. Recorded against the person (so it carries over to their next conversation), with the version
@@ -208,6 +251,12 @@ class Session:
             action, lang = self.pending_inventory
             self.pending_inventory = None
             await self._guarded(lambda trace: self._inventory_action(action, lang, trace))
+        if purpose == "video_kyc" and self.pending_kyc is not None:
+            note, self.pending_kyc = self.pending_kyc, None
+            if granted:
+                trace = Trace(self.id)
+                await self._handoff("video_kyc", trace, note=note or None)
+                trace.save()
 
     # ---------- inbound: one typed message ----------
     async def on_text(self, text: str, language: Optional[str] = None, speak_reply: bool = False) -> None:
@@ -226,9 +275,15 @@ class Session:
 
     async def _typed(self, text: str, lang: str, trace: Trace) -> None:
         masked = self.vault.mask(normalise_digits(text.strip()))
-        sensitive = bool(self.inventory_flow and self.inventory_flow.active)
-        inventory_request = _inventory_request(masked)
-        trace.add("text", language=lang, text="[withheld: financial inventory details]" if sensitive or inventory_request else masked)
+        scoped = bool(self.selected_document)
+        inventory_active = not scoped and bool(self.inventory_flow and self.inventory_flow.active)
+        inventory_request = not scoped and _inventory_request(masked)
+        trace_text = masked
+        if scoped:
+            trace_text = "[withheld: private turn]"
+        elif inventory_active or inventory_request:
+            trace_text = "[withheld: financial inventory details]"
+        trace.add("text", language=lang, text=trace_text)
         await self.ws.send_json({"type": "user", "text": masked})
         command = commands.parse(masked)
         if command:
@@ -244,7 +299,7 @@ class Session:
                             request_consent="financial_profile")
             trace.add("command", name="/inventory")
             return await self._deliver(turn, None, text, lang, trace)
-        if sensitive or not await self._escalated(masked, lang, trace):
+        if inventory_active or not await self._escalated(masked, lang, trace):
             await self._respond(masked, lang, trace)
 
     async def _run_command(self, command: commands.Command, lang: str, trace: Trace) -> None:
@@ -273,6 +328,8 @@ class Session:
             self.history.clear()
             self.last_intent = None
             self.focus = []
+            self.selected_document = None
+            await self.ws.send_json({"type": "document_scope", "document": None})
             self.flow = self.calc = self.pending = None
             self.inventory_flow = self.pending_inventory = None
             self.memory = None
@@ -339,7 +396,7 @@ class Session:
     # ---------- inbound: one recorded utterance ----------
     async def on_audio(self, audio: bytes) -> None:
         if self.case:   # a person is handling it: transcribe and pass the words on
-            stt = await transcribe_audio(audio, "voice.webm", "audio/webm")
+            stt = await transcribe_audio(audio, *sniff_audio(audio))   # Safari records MP4, other browsers WebM
             return await self._relay(stt.get("transcript", ""))
         if not await self._has_consent() or not await self._within_budget():
             return
@@ -368,7 +425,7 @@ class Session:
             metrics.TURN_SECONDS.labels(self.channel).observe(time.perf_counter() - started)
             await usage_ledger.add(self.user.id, [{**c, "trace_id": trace.id} for c in calls])   # what this turn cost, even a failed one
             trace.save()
-            if self.history and consent.is_active(self.user.subject, "conversation"):
+            if (self.history or self.selected_document) and consent.is_active(self.user.subject, "conversation"):
                 await working.save(self.user, self.id, self.snapshot())   # working memory: resumable from here
 
     async def _status(self, stage: str) -> None:
@@ -377,13 +434,22 @@ class Session:
 
     async def _turn(self, audio: bytes, trace: Trace) -> None:
         await self._status("transcribing")
-        stt = await transcribe_audio(audio, "voice.webm", "audio/webm")
+        filename, content_type = sniff_audio(audio)  # Safari records MP4, other browsers WebM
+        stt = await transcribe_audio(audio, filename, content_type)
         seconds = pricing.stt_seconds(len(audio))
         telemetry.record_speech("stt", seconds, pricing.stt_cost(seconds))
-        lang = resolve_language(stt["language_code"])
-        text = self.vault.mask(normalise_digits(stt["transcript"].strip()))
-        inventory_active = bool(self.inventory_flow and self.inventory_flow.active)
-        trace.add("stt", language=lang, transcript="[withheld: financial inventory details]" if inventory_active else text)
+        # Silence or unclear audio can come back without a transcript or language: that is "I didn't catch that",
+        # not an exception that would close the person's connection.
+        lang = resolve_language(stt.get("language_code"))
+        text = self.vault.mask(normalise_digits((stt.get("transcript") or "").strip()))
+        scoped = bool(self.selected_document)
+        inventory_active = not scoped and bool(self.inventory_flow and self.inventory_flow.active)
+        trace_text = text
+        if scoped:
+            trace_text = "[withheld: private turn]"
+        elif inventory_active:
+            trace_text = "[withheld: financial inventory details]"
+        trace.add("stt", language=lang, transcript=trace_text)
         if not text:
             return await self._error("I didn't catch that.")
         await self.ws.send_json({"type": "user", "text": text})
@@ -400,27 +466,29 @@ class Session:
 
     async def _respond(self, text: str, lang: str, trace: Trace) -> None:
         await self._status("thinking")
-        if not (self.inventory_flow and self.inventory_flow.active):
+        if not self.selected_document and not (self.inventory_flow and self.inventory_flow.active):
             await self._recall(text)
         result = None
-        async for mode, chunk in GRAPH.astream(
-            {"text": text, "lang": lang, "language": language_name(lang), "path": []},
-            config={"configurable": {"session": self, "trace": trace},
-                    **tracing.run_config(session_id=self.id, user_id=self.user.id, language=lang, channel=self.channel,
-                                         trace_id=trace.id, memory=self.memory is not None)},
-            stream_mode=["updates", "values"],
-        ):
-            if mode == "values":
-                result = chunk  # the last one is the finished state
-            elif DECIDING.isdisjoint(chunk):  # a node that wrote a reply has finished: the checks run next
-                await self._status("checking")
+        with tracing_context(enabled=False) if self.selected_document else nullcontext():
+            async for mode, chunk in GRAPH.astream(
+                {"text": text, "lang": lang, "language": language_name(lang), "path": []},
+                config={"configurable": {"session": self, "trace": trace},
+                        **tracing.run_config(session_id=self.id, user_id=self.user.id, language=lang, channel=self.channel,
+                                             trace_id=trace.id, memory=self.memory is not None)},
+                stream_mode=["updates", "values"],
+            ):
+                if mode == "values":
+                    result = chunk  # the last one is the finished state
+                elif DECIDING.isdisjoint(chunk):  # a node that wrote a reply has finished: the checks run next
+                    await self._status("checking")
         trace.add("route", path=result["path"])
         if "intent" in result:
             self.last_intent = result["intent"].intent
         if result.get("handoff"):
-            return await self._handoff(result["handoff"], trace, note=text)
+            return await self._ask_for_person(result["handoff"], trace, note=text, lang=lang)
         self.clarifications = self.clarifications + 1 if "clarify" in result["path"] else 0
-        await self._deliver(result["turn"], result.get("problem"), text, lang, trace)
+        await self._deliver(result["turn"], result.get("problem"), text, lang, trace,
+                            persist=not self.selected_document)
         if self.clarifications >= config.LOW_CONFIDENCE_HANDOFF_AFTER and not self.case:
             await self._handoff("low_confidence", trace, note=text)
 
@@ -457,7 +525,10 @@ class Session:
         structured = structure.build(spoken, turn.append, {} if problem else turn.sources, turn.kind)
         reply = {
             "type": "assistant", "agent": turn.agent, "text": shown, "trace_id": trace.id,
-            "citations": structured["sources"],
+            "kind": turn.kind,           # answer | ask | confirm | recommendation | compare | calc
+            "fallback": bool(problem),   # the checks blocked the reply: this is the safe "I can't confirm" text
+            "citations": [{**citations.describe(s["id"], s["text"]), **turn.citation_metadata.get(s["id"], {})}
+                          for s in structured["sources"]],
             "structured": structured,
             "verification": suggest.verification(blocked=bool(problem), from_cache=turn.from_cache, prechecked=turn.prechecked,
                                                  judged=turn.judge and bool(turn.sources) and not turn.prechecked,
@@ -465,6 +536,8 @@ class Session:
             "suggestions": suggest.for_intent(self.last_intent, lang, turn.kind,
                                               bool(turn.handoff_after or self.failures >= MAX_FAILURES)),
         }
+        if turn.progress:
+            reply["progress"] = {"step": turn.progress[0], "total": turn.progress[1]}
         spoken_text = guardrails.strip_citations(shown)
         # Speech is made while the verified text streams, so the voice follows the text without a gap.
         audio = asyncio.Queue() if self.speaking else None
@@ -568,6 +641,17 @@ class Session:
         await self.ws.send_json({"type": "consent_required", **consent.required("conversation")})
         return False
 
+    async def _ask_for_person(self, reason: str, trace: Trace, note: Optional[str] = None, lang: Optional[str] = None) -> None:
+        """The person asked for someone (the button, or in their own words). Video KYC needs its consent first: the request
+        waits for it and goes ahead as soon as it is granted."""
+        if reason == "video_kyc" and not consent.is_active(self.user.subject, "video_kyc"):
+            self.pending_kyc = note or ""
+            if lang is None:
+                return await self.ws.send_json({"type": "consent_required", **consent.required("video_kyc")})
+            return await self._deliver(Turn(text=escalation.kyc_consent_ask(lang), kind="answer", agent="general", judge=False,
+                                            request_consent="video_kyc"), None, note or "", lang, trace)
+        await self._handoff(reason, trace, note=note)
+
     async def _handoff(self, reason: str, trace: Trace, note: Optional[str] = None) -> None:
         """Bring in a person: open (or join) a case on the executive desk. From now on this conversation's messages go to
         the executive, not the AI, until the case is closed."""
@@ -578,7 +662,8 @@ class Session:
             log.error("Could not open a case: %s", e)
             trace.add("handoff", reason=reason, reference=None, error=str(e))
             return await self._error("I couldn't reach our team just now. Please try again in a moment.")
-        announced = bool(self.case and self.case["id"] == case["id"])   # already told, by the case_attached event
+        # already told, by the case_attached event (unless the request changed what the case is for)
+        announced = bool(self.case and self.case["id"] == case["id"] and self.case["kind"] == case["kind"])
         self._set_case(case)
         trace.add("handoff", reason=reason, reference=case["reference"])
         if not announced:
@@ -594,7 +679,8 @@ class Session:
         from desk import live as desk_live
         return {"id": self.case["id"], "reference": self.case["reference"], "kind": self.case["kind"],
                 "status": "with_executive" if self.case["status"] == "assigned" else "waiting",
-                "priority": self.case["priority"], "executives_online": bool(desk_live.executives.get(self.user.tenant_id))}
+                "priority": self.case["priority"], "executives_online": bool(desk_live.executives.get(self.user.tenant_id)),
+                "scheduled_for": _iso(self.case.get("scheduled_for")), "meeting_url": self.case.get("meeting_url")}
 
     async def _relay(self, text: str) -> None:
         """A message while a person handles the conversation: masked, kept on the case, passed to the executive live."""
@@ -627,8 +713,9 @@ class Session:
         if event["type"] == "inbox":   # a new offer: shown whatever the conversation is doing
             return await self.ws.send_json(event)
         if event["type"] == "case_attached":
-            if not (self.case and self.case["id"] == event["case_id"]):
-                self._set_case(dict(event["case"]))
+            if not (self.case and self.case["id"] == event["case_id"] and self.case["kind"] == event["case"]["kind"]):
+                same = self.case if self.case and self.case["id"] == event["case_id"] else {}
+                self._set_case({**same, **event["case"]})
                 await self.ws.send_json({"type": "handoff", "reference": self.case["reference"], "reason": self.case["reason"],
                                          "case": self._case_view()})
             return
@@ -638,6 +725,8 @@ class Session:
             self.case["status"] = "assigned"
         elif event["type"] == "agent_left":
             self.case["status"] = "open"
+        elif event["type"] == "video_kyc_scheduled":
+            self.case.update(scheduled_for=event["scheduled_for"], meeting_url=event["meeting_url"])
         await self.ws.send_json(event)
         if event["type"] == "handoff_closed":
             self._set_case(None)   # back to the AI
@@ -652,6 +741,13 @@ class Session:
                             None, text, lang, trace)
         await self._handoff(reason, trace, note=text)
         return True
+
+    async def status(self, stage: str) -> None:
+        """A finer stage from the graph node doing the work (searching, comparing, calculating). Never fails a turn."""
+        try:
+            await self._status(stage)
+        except RuntimeError:  # the socket closed mid-turn; the turn's own error handling takes over
+            pass
 
     async def _error(self, message: str) -> None:
         await self.ws.send_json({"type": "error", "message": message})

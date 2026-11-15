@@ -597,6 +597,8 @@ class Session:
     async def on_desk_event(self, event: dict) -> None:
         """Something happened on this person's case at the desk: it was opened (perhaps from another device), an executive
         joined, wrote, scheduled, or closed it."""
+        if event["type"] == "inbox":   # a new offer: shown whatever the conversation is doing
+            return await self.ws.send_json(event)
         if event["type"] == "case_attached":
             if not (self.case and self.case["id"] == event["case_id"]):
                 self._set_case(dict(event["case"]))

@@ -120,6 +120,9 @@ export interface BudgetExceededEvent {
   resets_at: string;
 }
 
+/** A new offer in the person's inbox (only with the marketing consent). */
+export interface InboxEvent { type: "inbox"; item: { title: string; body: string; cta_label: string | null; has_image: boolean } }
+
 export interface UserEvent {
   type: "user";
   /** Masked transcript (e.g. "[PAN_1]"). */
@@ -246,6 +249,7 @@ export type ServerEvent =
   | ConsentRequiredEvent
   | ConsentStatusEvent
   | StatusEvent
+  | InboxEvent
   | UsageWarningEvent
   | BudgetExceededEvent
   | CardEvent

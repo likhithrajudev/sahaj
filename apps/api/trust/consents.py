@@ -37,6 +37,9 @@ async def _erase(user, purpose: str) -> Dict[str, int]:
     if purpose == "conversation_records":
         from storage import files
         return {"recordings": await files.purge(user, files.RECORDINGS)}
+    if purpose == "marketing":
+        from marketing import store as campaigns
+        return {"offers": await campaigns.forget(user.id)}
     if purpose == "document_analysis":
         from storage import index
         return {"document_passages": await index.forget(user.id)}

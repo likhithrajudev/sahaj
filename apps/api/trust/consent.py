@@ -67,6 +67,14 @@ PURPOSES = {
             "and account numbers are masked. Only you can open them, and withdrawing consent deletes them all."
         ),
     },
+    "marketing": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "Sahaj can show you offers and updates about insurance and loan products in your inbox in the app. "
+            "What you say in your conversations is not used to choose them. You will get at most a few a week, "
+            "and you can stop at any time."
+        ),
+    },
     "video_kyc": {
         "version": "2026-11-draft-2",
         "text": (
@@ -127,6 +135,8 @@ META = {
                           "withdrawal": "What Sahaj learned from your documents is erased. The files stay."},
     "conversation_records": {"title": "Keep my voice recordings and transcripts", "required": False, "requires": "conversation",
                              "ttl_days": 365, "withdrawal": "Every stored recording and transcript is deleted."},
+    "marketing": {"title": "Show me offers and updates", "required": False, "requires": None, "ttl_days": 365,
+                  "withdrawal": "You stop receiving offers, and the ones in your inbox are removed."},
     "video_kyc": {"title": "Video identity verification", "required": False, "requires": None, "ttl_days": 365,
                   "withdrawal": "Future Sahaj appointment requests stop. The regulated provider manages records it already holds."},
     "financial_application": {"title": "Share details for an insurance or loan request", "required": False,

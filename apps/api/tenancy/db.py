@@ -13,7 +13,8 @@ log = logging.getLogger("sahaj.tenancy")
 # Tables holding one tenant's data. `shared` ones also show rows of the 'public' tenant (the platform's own knowledge
 # base and default procedures) to every tenant, read-only.
 TENANT_TABLES = ("users", "refresh_tokens", "user_memories", "user_files", "user_doc_chunks", "usage_events",
-                 "reply_feedback", "cases", "case_messages", "episodes", "financial_events", "financial_inventory_items")
+                 "reply_feedback", "cases", "case_messages", "episodes", "financial_events", "financial_inventory_items",
+                 "campaigns", "campaign_deliveries")
 SHARED_TABLES = ("knowledge_chunks", "procedures")
 PUBLIC = "public"
 

@@ -36,6 +36,14 @@ Some conversations need a person: when the customer asks, when they complain or 
 - `POST /desk/cases/{id}/claim` (409 if someone was first), `/release`, `/messages` (`{"text"}`), `/video-kyc` (`{"scheduled_for": "<ISO time with zone>", "meeting_url": "https://…"}`), `/resolve` (`{"outcome": "resolved"|"escalated_offline"|"no_response"|"duplicate", "resolution", "message"}`).
 - Customer messages reach executives masked (`[PAN_1]`, `[PHONE_1]`). Every claim, release, booking and close is written to the audit ledger with who did it.
 
+## Offers (marketing)
+
+Offers go only to people who granted the `marketing` consent, at most 3 per person per 7 days (`MARKETING_WEEKLY_CAP`), to their in-app inbox.
+
+- **Admins:** `POST /admin/campaigns` (`title`, `body`, optional `cta_label`, `cta_url` (https), `audience`: `languages`, `platforms`), `POST /admin/campaigns/{id}/image` (PNG/JPEG/WebP up to 5 MB), `GET /admin/campaigns/{id}` (`audience_size` before sending), `POST /admin/campaigns/{id}/send`, `POST /admin/campaigns/{id}/cancel`, `GET /admin/campaigns` (recipients, seen, clicked). A campaign is sent once; each send is in the audit ledger.
+- **Customers:** `GET /inbox`, `POST /inbox/{id}/seen`, `POST /inbox/{id}/click` (returns the link), `DELETE /inbox/{id}`, `GET /inbox/{id}/image`. An open conversation receives `{"type":"inbox","item":{"title","body","cta_label","has_image"}}` when an offer arrives.
+- Withdrawing `marketing` removes every offer in the person's inbox.
+
 ## Usage and spending limit
 
 Every model call, speech-to-text request and text-to-speech request a person causes is recorded with its estimated cost in US dollars. Each person may spend **$5 a month** by default (calendar month, UTC); an admin can change it per person.

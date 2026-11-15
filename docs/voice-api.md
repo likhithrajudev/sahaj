@@ -42,20 +42,22 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 | `card` | `kind`, `card`, `trace_id` | Structured data to render as UI, sent just before the matching `assistant` message. See "Cards" below. Always trust the card over the spoken text for figures. |
 | `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets the conversation. |
 | `user` | `text` | The transcript as a user message. **Personal identifiers are already masked** (for example `[PAN_1]`, `[PHONE_1]`). Show it as is. |
-| `assistant` | `agent`, `text`, `citations`, `trace_id` | The answer. `agent` is `insurance`, `loan` or `general`. `text` contains source tags like `[policy:3.2]`. Render each tag as a link or footnote to the matching entry in `citations`, which holds the clause text. Keep `trace_id` for support. |
+| `assistant` | `agent`, `text`, `citations`, `trace_id` | The answer. `agent` is `insurance`, `loan`, `general` or `advice` (the needs analysis and recommendation). `text` contains source tags like `[policy:3.2]`. Render each tag as a link or footnote to the matching entry in `citations`, which holds the clause text. Keep `trace_id` for support. |
 | *(binary)* | | MP3 chunks of the spoken answer. Join them in order. |
 | `done` | none | The turn is finished. If you received no audio chunks, play nothing. Some languages are text only. |
-| `handoff` | `reference`, `reason` | A human is taking over. Show the `reference` to the user and disable the talk button. The AI stops answering on this session. `reason` is `user_requested`, `guardrail_failures` (two answers in a row could not be verified) or `stuck_in_questions` (three turns of the needs analysis made no progress). |
+| `handoff` | `reference`, `reason` | A human is taking over. Show the `reference` to the user and disable the talk button. The AI stops answering on this session. `reason` is `user_requested`, `guardrail_failures` (two answers in a row could not be verified) or `stuck_in_questions` (three turns of the needs analysis made no progress). If audio is sent after a handoff, the server repeats this event with `reference` only (no `reason`). |
 | `error` | `message` | The turn failed (silence, bad audio, upstream failure). No `done` follows. The socket stays open, so let the user try again. |
 
 ### Cards
 
-| `kind` | When | Contents |
+Render by `card.type`. The event's `kind` is the turn that produced it (`confirm`, `recommendation`, `compare`, `calc`). Typed in `packages/contracts`.
+
+| `card.type` | When | Contents |
 |---|---|---|
-| `profile_summary` | The needs analysis is asking the user to confirm | `details`: the complete list of what Sahaj understood, as short lines. **Display it.** The spoken read-back can be shorter, and the user must see exactly what will be used before saying yes. |
-| `recommendation` | After the user confirms | `suggested_cover` (`amount`, `basis`, `note`), `plans` (ranked; each with `name`, `insurer`, `cover`, `annual_premium`, `highlights`, `reasons`, `criteria` showing how it scored), `disclosures` (all of them, always show), `sample_data`, `indicative_premiums`. |
-| `comparison` | The user asks to compare plans | `plans`, each with `rows` of `[label, value]` pairs: render as a table. |
-| `calc` | A loan calculation (EMI, or interest saved by prepaying) | `kind` (`emi` or `prepayment`), `inputs` (what the user gave) and `result`. The numbers are computed by code, so show them as given. |
+| `profile_summary` (`kind: confirm`) | The needs analysis is asking the user to confirm | `details`: the complete list of what Sahaj understood, as short lines. **Display it.** The spoken read-back can be shorter, and the user must see exactly what will be used before saying yes. |
+| `recommendation` (`kind: recommendation`) | After the user confirms | `goal`, `suggested_cover` (`amount`, `basis`, `note` or null), `plans` (up to 3, ranked; each with `rank`, `product_id`, `name`, `insurer`, `cover`, `annual_premium`, `highlights`, `reasons`, `meets_suggested_cover`, `criteria` keyed by criterion with `value`, `score`, `weight`, `contribution`), `disclosures` (all of them, always show), `disclosures_version`, `sample_data`, `indicative_premiums`. |
+| `comparison` (`kind: compare`) | The user asks to compare plans | `goal`, `sample_data`, `premiums_included`, `plans`, each with `id`, `name`, `insurer` and `rows` of `[label, value]` pairs: render as a table. |
+| `loan_calculation` (`kind: calc`) | A loan calculation (EMI, or interest saved by prepaying) | `card.kind` (`emi` or `prepayment`), `inputs` (`principal`, `annual_rate_percent`, `tenure_months`, plus `prepay_amount` and `mode` for prepayment) and `result` (`emi`, `total_payment`, `total_interest`; or `emi_before/after`, `months_before/after/saved`, `interest_before/after/saved`). The numbers are computed by code, so show them as given. |
 
 The recommendation's ranking, cover and premiums are computed by a deterministic engine, not by the language model, so the card is the source of truth. If `sample_data` is true the plans are fictional development data and must not be presented as real products.
 

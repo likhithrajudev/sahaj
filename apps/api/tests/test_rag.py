@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
+import tenancy
 from rag import loader, store
 
 
@@ -32,7 +33,8 @@ def run_against_db(scenario):
         if store._pool is None:
             pytest.skip("Postgres with pgvector is not reachable at DATABASE_URL")
         try:
-            return await scenario()
+            with tenancy.system():
+                return await scenario()
         finally:
             await store.close_pool()
     return asyncio.run(runner())

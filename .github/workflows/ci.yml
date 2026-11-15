@@ -52,5 +52,14 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/requirements.txt
       - run: python -m pip install -r apps/api/requirements.txt
+      - name: Enable pgvector extension
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+
+          with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+              conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+          PY
       - run: pytest tests
         working-directory: apps/api

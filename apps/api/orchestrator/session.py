@@ -564,9 +564,10 @@ class Session:
     def _case_view(self) -> Optional[dict]:
         if not self.case:
             return None
+        from desk import live as desk_live
         return {"id": self.case["id"], "reference": self.case["reference"], "kind": self.case["kind"],
                 "status": "with_executive" if self.case["status"] == "assigned" else "waiting",
-                "priority": self.case["priority"]}
+                "priority": self.case["priority"], "executives_online": bool(desk_live.executives.get(self.user.tenant_id))}
 
     async def _relay(self, text: str) -> None:
         """A message while a person handles the conversation: masked, kept on the case, passed to the executive live."""

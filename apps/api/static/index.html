@@ -103,6 +103,7 @@
         <button id="newchat" class="btn small">New conversation</button>
         <button id="human" class="btn small">Talk to a human</button>
       </div>
+      <div id="casebar" class="msg ask hidden" style="max-width:100%;margin-bottom:8px"></div>
       <div id="log" aria-live="polite"></div>
       <div id="stage" class="status-line"></div>
       <form id="form" class="row">
@@ -218,17 +219,32 @@ document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
 const log = $("#log"); let ws = null, sseSession = null, audioParts = [], awaitingAudio = false, lastUserText = "";
 const say = (cls, ...kids) => { const m = el("div", { className: "msg " + cls }, ...kids); log.append(m); log.scrollTop = log.scrollHeight; return m; };
 const setStage = (t) => { $("#stage").textContent = t ? "… " + t : ""; };
-const STAGES = { transcribing: "listening", thinking: "thinking", checking: "checking the answer against sources", speaking: "speaking" };
+const STAGES = { transcribing: "listening", thinking: "thinking", checking: "checking the answer against sources", speaking: "speaking",
+  waiting_for_executive: "waiting for a person from the team (your messages go to them)", speech_unavailable: "" };
+let currentCase = null;
+function showCase(c) {
+  currentCase = c; const bar = $("#casebar");
+  bar.classList.toggle("hidden", !c); if (!c) return;
+  bar.replaceChildren(
+    el("b", {}, c.status === "with_executive" ? "You are talking to a person from the team. " : "Waiting for a person from the team. "),
+    el("span", { className: "small mute" }, `Case ${c.reference} · ${c.kind} · ${c.priority}${c.executives_online === false ? " · nobody is on the desk right now; they will reply here" : ""} `),
+    el("button", { className: "btn small", onclick: () => sendMessage({ type: "handoff_cancel" }) }, "Cancel and go back to Sahaj"));
+}
 
 function closeSocket() { if (ws) { ws.onclose = null; ws.close(); ws = null; } sseSession = null; }
-function startChat() { closeSocket(); log.replaceChildren(); setStage(""); say("sys", "New conversation. Pick a transport above; replies are checked before they appear."); if (transport() === "ws") openSocket(); }
+function startChat(fresh) {
+  if (fresh === true) store.set("lastSession", null);
+  closeSocket(); log.replaceChildren(); setStage(""); showCase(null);
+  say("sys", "New conversation. Pick a transport above; replies are checked before they appear."); if (transport() === "ws") openSocket();
+}
 const transport = () => $("#transport").value;
-$("#transport").onchange = startChat;
-$("#newchat").onclick = async () => { if (sseSession) await api("/chat/" + sseSession, { method: "DELETE" }).catch(() => {}); startChat(); };
+$("#transport").onchange = () => startChat(true);
+$("#newchat").onclick = async () => { if (sseSession) await api("/chat/" + sseSession, { method: "DELETE" }).catch(() => {}); startChat(true); };
 
 function openSocket() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws/voice?access_token=${encodeURIComponent(access)}`);
+  const last = store.get("lastSession");
+  ws = new WebSocket(`${proto}://${location.host}/ws/voice?access_token=${encodeURIComponent(access)}${last ? "&resume=" + encodeURIComponent(last) : ""}`);
   ws.binaryType = "blob";
   ws.onmessage = ({ data }) => { if (data instanceof Blob) { audioParts.push(data); return; } onEvent(JSON.parse(data)); };
   ws.onclose = async (e) => {
@@ -256,14 +272,24 @@ $("#human").onclick = () => sendMessage({ type: "handoff" });
 
 function onEvent(m) {
   switch (m.type) {
-    case "session": sseSession = m.id; say("sys", `Session ${m.id.slice(0, 8)} · memory ${m.memory ? "in use" : "off"}`); break;
+    case "session":
+      sseSession = m.id; store.set("lastSession", m.id);
+      say("sys", `Session ${m.id.slice(0, 8)}${m.resumed ? " (resumed)" : ""} · memory ${m.memory ? "in use" : "off"}`);
+      showCase(m.case); break;
     case "consent_required": askConsent(m); break;
     case "consent": say("sys", `Consent “${m.purpose}”: ${m.status}`); break;
     case "status": setStage(STAGES[m.stage] || m.stage); break;
     case "user": say("me", m.text); break;
     case "card": say("sys", el("details", {}, el("summary", {}, `Structured data: ${m.kind}`), el("pre", {}, JSON.stringify(m.card, null, 2)))); break;
     case "assistant": setStage(""); renderAssistant(m); break;
-    case "handoff": say("sys", `Handed to a person. Reference ${m.reference}${m.reason ? " (" + m.reason + ")" : ""}`); break;
+    case "handoff": say("sys", `Handed to a person (${m.reason || "request"}). Reference ${m.reference}`); showCase(m.case); break;
+    case "agent_joined": say("sys", `${m.agent.name} from the Sahaj team joined.`); showCase({ ...currentCase, status: "with_executive" }); break;
+    case "agent_left": say("sys", "The executive stepped away; you are back in the queue."); showCase({ ...currentCase, status: "waiting" }); break;
+    case "agent_message": say("", el("div", { className: "small mute" }, m.agent.name), m.text); break;
+    case "video_kyc_scheduled": say("sys", `Video KYC booked for ${new Date(m.scheduled_for).toLocaleString()}${m.meeting_url ? " · " + m.meeting_url : ""}`); break;
+    case "handoff_closed": say("sys", `${m.status === "cancelled" ? "Request cancelled" : "The team closed the case"}${m.message ? ": " + m.message : ""}. Sahaj is answering again.`); showCase(null); break;
+    case "usage_warning": say("sys", `You have used ${m.percent_used}% of this month's allowance.`); break;
+    case "budget_exceeded": say("err", `This month's allowance is used up ($${m.spent_usd} of $${m.budget_usd}). It renews on ${new Date(m.resets_at).toLocaleDateString()}.`); break;
     case "error": setStage(""); say("err", m.message); break;
     case "done":
       setStage("");
@@ -274,7 +300,7 @@ function onEvent(m) {
 function askConsent(m) {
   const box = say("ask", el("div", { className: "small mute" }, `Consent needed: ${m.purpose} (version ${m.version})`), el("div", {}, m.text),
     el("div", { className: "row", style: "margin-top:8px" },
-      el("button", { className: "btn primary", onclick: () => { sendMessage({ type: "consent", purpose: m.purpose, granted: true }); box.remove(); } }, "I agree"),
+      el("button", { className: "btn primary", onclick: () => { sendMessage({ type: "consent", purpose: m.purpose, granted: true, version: m.version }); box.remove(); } }, "I agree"),
       el("button", { className: "btn", onclick: () => { sendMessage({ type: "consent", purpose: m.purpose, granted: false }); box.remove(); } }, "No thanks")));
 }
 const BADGES = { verified: ["✔ Verified against sources", "Every statement is tied to a source and was fact-checked."],

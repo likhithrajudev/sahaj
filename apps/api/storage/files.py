@@ -159,7 +159,7 @@ async def count(user_id: str) -> int:
 
 async def list_for(user_id: str, category: Optional[str] = None) -> List[dict]:
     async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute("SELECT id, filename, content_type, size_bytes, sha256, created_at, index_status, indexed_chunks, category "
+        await cur.execute("SELECT id, filename, content_type, size_bytes, sha256, blob_name, created_at, index_status, indexed_chunks, category "
                           "FROM user_files WHERE user_id = %(u)s AND (%(c)s::text IS NULL OR category = %(c)s) "
                           "ORDER BY created_at DESC", {"u": user_id, "c": category})
         return await cur.fetchall()

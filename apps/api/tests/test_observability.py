@@ -223,3 +223,11 @@ def test_run_config_describes_the_turn_without_identifying_the_person():
     assert rc["run_name"] == "sahaj_turn" and {"channel:text", "lang:hi-IN", "memory"} <= set(rc["tags"])
     assert rc["metadata"]["audit_trace_id"] == "t1" and rc["metadata"]["user_ref"] == tracing.person(uid)
     assert uid not in str(rc) and tracing.person(uid) == tracing.person(uid) != tracing.person("someone-else")
+
+
+def test_access_tokens_never_reach_uvicorn_logs():
+    from observability.logs import RedactTokens
+    record = logging.LogRecord("uvicorn.error", logging.INFO, "", 0, '%s - "WebSocket %s" [accepted]',
+                               ("127.0.0.1:5", "/ws/voice?access_token=eyJabc.def.ghi&resume=s1"), None)
+    RedactTokens().filter(record)
+    assert "eyJabc" not in record.getMessage() and "access_token=[redacted]&resume=s1" in record.getMessage()

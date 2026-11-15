@@ -279,7 +279,7 @@ def test_consent_screen_api(monkeypatch):
         assert (await c.get("/consents")).status_code == 401
 
         listing = (await c.get("/consents", headers=h)).json()
-        assert len(listing["items"]) == 7 and listing["missing_required"] == ["conversation"]
+        assert len(listing["items"]) == len(consent.PURPOSES) and listing["missing_required"] == ["conversation"]
         mem = next(i for i in listing["items"] if i["purpose"] == "memory")
         assert mem["action"] == "ask" and mem["text"] and mem["withdrawal"] and mem["title"]
 

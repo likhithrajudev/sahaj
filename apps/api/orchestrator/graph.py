@@ -39,12 +39,12 @@ DECLINE = {
         "en-IN": "Only the lender can decide whether to approve a loan. I can look up published lender terms, explain your offer, or work out an EMI.",
         "hi-IN": "लोन मंज़ूर करने का फैसला केवल ऋणदाता कर सकता है। मैं ऋणदाताओं की प्रकाशित शर्तें खोज सकता हूँ, आपके ऑफ़र को समझा सकता हूँ या ईएमआई निकाल सकता हूँ।"},
     "out_of_scope": {
-        "en-IN": "I can only help with insurance and loans. I can explain policies, compare and recommend insurance plans, explain a loan offer or work out an EMI, or connect you to a person.",
-        "hi-IN": "मैं केवल बीमा और लोन में मदद कर सकता हूँ। मैं पॉलिसी समझा सकता हूँ, बीमा योजनाओं की तुलना और सिफ़ारिश कर सकता हूँ, लोन ऑफ़र समझा सकता हूँ या ईएमआई निकाल सकता हूँ, या आपको किसी व्यक्ति से जोड़ सकता हूँ।"},
+        "en-IN": "I can only help with insurance and loans. I can explain policies, look up current insurance information, explain a loan offer or work out an EMI, or connect you to a person.",
+        "hi-IN": "मैं केवल बीमा और लोन में मदद कर सकता हूँ। मैं पॉलिसी समझा सकता हूँ, बीमा की मौजूदा जानकारी खोज सकता हूँ, लोन ऑफ़र समझा सकता हूँ या ईएमआई निकाल सकता हूँ, या आपको किसी व्यक्ति से जोड़ सकता हूँ।"},
 }
 DECLINE_INSTRUCTION = {
     "loan_rates_comparison": "say only the lender decides loan approval, and offer to search published lender terms, explain their loan offer or work out an EMI",
-    "out_of_scope": "tell the user you can only help with insurance and loans, and offer to explain policies, recommend insurance, explain a loan offer, work out an EMI or connect them to a person",
+    "out_of_scope": "tell the user you can only help with insurance and loans, and offer to explain policies, look up current insurance information, explain a loan offer, work out an EMI or connect them to a person",
 }
 ROUTES = {
     "insurance_explain": "insurance_rag", "insurance_advice": "advice", "insurance_compare": "compare",
@@ -115,7 +115,12 @@ async def continue_active(state: State, config: RunnableConfig):
             session.inventory_flow = None
         return {"turn": turn}
     if session.flow and session.flow.active:
-        turn = await session.flow.handle(state["text"], state["lang"], state["language"], session._can_advise(), trace)
+        if catalogue.is_sample():
+            goal = session.flow.profile.get("goal")
+            session.flow = None
+            turn = await _web_search_turn(state, config, "insurance", _insurance_products_query(goal))
+        else:
+            turn = await session.flow.handle(state["text"], state["lang"], state["language"], session._can_advise(), trace)
         intent = "insurance_advice"
     if turn is None and session.calc and session.calc.active:
         turn = await session.calc.handle(state["text"], state["lang"], state["language"])
@@ -207,7 +212,10 @@ async def insurance_rag(state: State, config: RunnableConfig):
     session, trace = _ctx(config)
     # A named plan, else the plans just shown, else only the general explanations. An unnamed question must never be
     # answered with one particular plan's figures as if they were general.
-    plans = catalogue.find_in_text(state["text"]) or session.focus
+    named_plans = catalogue.find_in_text(state["text"])
+    if catalogue.is_sample() and named_plans:
+        return {"turn": await _web_search_turn(state, config, "insurance")}
+    plans = (named_plans or session.focus) if not catalogue.is_sample() else []
     session.agent = "insurance"
     return {"turn": await _rag_turn(session, trace, state, "insurance", "insurance", plans + concept_docs("insurance"))}
 
@@ -225,6 +233,10 @@ async def loan_rag(state: State, config: RunnableConfig):
 async def advice(state: State, config: RunnableConfig):
     session, trace = _ctx(config)
     lang = state["lang"]
+    if catalogue.is_sample():
+        query = _insurance_products_query(state["text"])
+        trace.add("insurance_catalogue", status="sample_bypassed", provider="firecrawl")
+        return {"turn": await _web_search_turn(state, config, "insurance", query)}
     if not session._can_advise():  # personal details are needed, so ask permission first
         session.pending = (state["text"], lang)
         return {"turn": Turn(_pick(NEED_CONSENT, lang), kind="ask", agent="advice", judge=False,
@@ -238,6 +250,9 @@ async def advice(state: State, config: RunnableConfig):
 async def compare(state: State, config: RunnableConfig):
     session, _ = _ctx(config)
     lang, language, text = state["lang"], state["language"], state["text"]
+    if catalogue.is_sample():
+        query = (state["intent"].search or "").strip() or text
+        return {"turn": await _web_search_turn(state, config, "insurance", query)}
     result = comparison.compare(text, session.flow.profile if session.flow else None)
     session.agent = "insurance"
     if result is None:
@@ -265,8 +280,12 @@ async def fine_print(state: State, config: RunnableConfig):
     session, trace = _ctx(config)
     domain = "loan" if state["intent"].intent == "loan_fine_print" else "insurance"
     session.agent = domain
+    named_sample = domain == "insurance" and catalogue.is_sample() and catalogue.find_in_text(state["text"])
+    if named_sample:
+        return {"turn": await _web_search_turn(state, config, "insurance")}
     topics = [t.strip() for t in procedural.text(f"fine_print.checklist.{domain}").splitlines() if t.strip()]
-    named = catalogue.find_in_text(state["text"]) or session.focus if domain == "insurance" else product_docs("loan")
+    named = ((catalogue.find_in_text(state["text"]) or session.focus) if not catalogue.is_sample() else []) \
+        if domain == "insurance" else product_docs("loan")
     user_id = await _document_user(session)
     best: Dict[str, dict] = {}
     per_topic = []
@@ -297,12 +316,20 @@ async def fine_print(state: State, config: RunnableConfig):
                          detailed=True, asked=state["text"], card=card)}
 
 
-async def _web_search_turn(state: State, run_config: RunnableConfig, domain: str) -> Turn:
+def _insurance_products_query(value: Optional[str]) -> str:
+    goal = value if value in ("health", "term", "whole_life") else comparison.category_in(value or "")
+    product = {"health": "health", "term": "term life", "whole_life": "whole life"}.get(goal, "")
+    return f"current {product + ' ' if product else ''}insurance plans India official insurer product features"
+
+
+async def _web_search_turn(state: State, run_config: RunnableConfig, domain: str,
+                           query_override: Optional[str] = None) -> Turn:
     from services.firecrawl import FirecrawlError, FirecrawlUnavailable, search_web, sources_for
     session, trace = _ctx(run_config)
     agent = "loan" if domain == "loan" else "insurance"
     session.agent = agent
-    query = (state["intent"].search or "").strip() or state["text"]
+    intent = state.get("intent")
+    query = query_override or ((intent.search or "").strip() if intent else "") or state["text"]
     try:
         result = await search_web(query, domain)
     except (FirecrawlError, FirecrawlUnavailable):
@@ -324,8 +351,12 @@ async def _web_search_turn(state: State, run_config: RunnableConfig, domain: str
     reply, repaired = guardrails.repair_citations(reply, sources)
     if repaired:
         trace.add("citations_repaired", count=repaired)
+    card = None
+    if domain == "insurance":
+        card = {"type": "web_search", "provider": "firecrawl", "query": result["query"],
+                "results": [{key: item[key] for key in ("title", "url", "description")} for item in result["results"]]}
     return Turn(text=session.vault.mask(reply), kind="answer", agent=agent, sources=sources,
-                judge=True, detailed=state["intent"].deep, asked=state["text"])
+                judge=True, detailed=bool(intent and intent.deep), asked=state["text"], card=card)
 
 
 @node

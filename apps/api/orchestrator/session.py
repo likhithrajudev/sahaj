@@ -1,4 +1,5 @@
 import json
+import asyncio
 import logging
 import re
 import time
@@ -454,7 +455,7 @@ class Session:
                 self.focus = [p.get("product_id") or p["id"] for p in turn.card["plans"]]
             await self.ws.send_json({"type": "card", "kind": turn.kind, "card": turn.card, "trace_id": trace.id})
         structured = structure.build(spoken, turn.append, {} if problem else turn.sources, turn.kind)
-        await self.ws.send_json({
+        reply = {
             "type": "assistant", "agent": turn.agent, "text": shown, "trace_id": trace.id,
             "citations": structured["sources"],
             "structured": structured,
@@ -463,20 +464,19 @@ class Session:
                                                  sources=len(turn.sources), kind=turn.kind),
             "suggestions": suggest.for_intent(self.last_intent, lang, turn.kind,
                                               bool(turn.handoff_after or self.failures >= MAX_FAILURES)),
-        })
-        if self.speaking:
+        }
+        spoken_text = guardrails.strip_citations(shown)
+        # Speech is made while the verified text streams, so the voice follows the text without a gap.
+        audio = asyncio.Queue() if self.speaking else None
+        producer = asyncio.create_task(self._synthesize(spoken_text, lang, audio, trace)) if audio else None
+        await self._stream(spoken_text, trace.id)
+        await self.ws.send_json(reply)
+        if producer:
             await self._status("speaking")
-            spoken_text, sent = guardrails.strip_citations(shown), False
-            try:
-                async for chunk in speak(spoken_text, lang):
-                    sent = True
-                    await self.ws.send_bytes(chunk)
-            except Exception as e:   # the speech service being down must not lose the reply, its record or `done`
-                log.warning("Text-to-speech failed: %s", e)
-                trace.add("tts_error", message=str(e))
+            while (chunk := await audio.get()) is not None:
+                await self.ws.send_bytes(chunk)
+            if not await producer:
                 await self.ws.send_json({"type": "status", "stage": "speech_unavailable"})
-            if sent:
-                telemetry.record_speech("tts", len(spoken_text), pricing.tts_cost(len(spoken_text)))
 
         if persist:
             self._turns += 1
@@ -490,6 +490,33 @@ class Session:
             await self._handoff("stuck_in_questions", trace)
         elif self.failures >= MAX_FAILURES:
             await self._handoff("guardrail_failures", trace)
+
+    async def _stream(self, text: str, trace_id: str) -> None:
+        """Show the already-verified reply a few words at a time; the full `assistant` event follows."""
+        if not config.TEXT_STREAMING:
+            return
+        words = re.findall(r"\S+\s*", text)
+        for i in range(0, len(words), config.STREAM_WORDS_PER_CHUNK):
+            await self.ws.send_json({"type": "assistant_delta", "trace_id": trace_id,
+                                     "text": "".join(words[i:i + config.STREAM_WORDS_PER_CHUNK])})
+            await asyncio.sleep(config.STREAM_DELAY_MS / 1000)
+
+    async def _synthesize(self, text: str, lang: str, out: asyncio.Queue, trace: Trace) -> bool:
+        """Speech chunks into `out`, then None. Returns False if the speech service failed."""
+        sent = False
+        try:
+            async for chunk in speak(text, lang):
+                sent = True
+                await out.put(chunk)
+            return True
+        except Exception as e:   # a speech outage must not lose the reply, its record or `done`
+            log.warning("Text-to-speech failed: %s", e)
+            trace.add("tts_error", message=str(e))
+            return False
+        finally:
+            if sent:
+                telemetry.record_speech("tts", len(text), pricing.tts_cost(len(text)))
+            await out.put(None)
 
     # ---------- helpers ----------
     def _can_advise(self) -> bool:

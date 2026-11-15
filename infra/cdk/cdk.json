@@ -1,0 +1,11 @@
+{
+  "app": "npx tsx bin/sahaj.ts",
+  "context": {
+    "region": "ap-southeast-2",
+    "filesBucket": "paytm-sahaj",
+    "githubRepository": "likhithrajudev/sahaj",
+    "corsOrigins": "http://localhost:3000,http://localhost:5173",
+    "certificateArn": "",
+    "@aws-cdk/core:defaultCrossStackReferences": "weak"
+  }
+}

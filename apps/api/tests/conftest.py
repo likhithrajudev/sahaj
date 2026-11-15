@@ -24,6 +24,11 @@ def default_tenant():
 
 
 @pytest.fixture(autouse=True)
+def no_streaming_by_default(monkeypatch):
+    monkeypatch.setattr(config, "TEXT_STREAMING", False)   # tests that check streaming switch it on
+
+
+@pytest.fixture(autouse=True)
 def no_real_providers(monkeypatch):
     """No test reaches OpenAI or Sarvam with the real keys in .env.local: tests that need a provider mock it."""
     monkeypatch.setattr(config, "OPENAI_API_KEY", None)

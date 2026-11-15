@@ -63,3 +63,56 @@ jobs:
           PY
       - run: pytest tests
         working-directory: apps/api
+
+  infra:
+    name: Infrastructure synth
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/cdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/cdk/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx cdk synth --strict -q
+        env:
+          CDK_DEFAULT_ACCOUNT: "359290219095"   # matches the committed cdk.context.json
+
+  deploy:
+    name: Deploy to AWS (blue/green)
+    needs: [frontend, backend, infra]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-24.04-arm
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/cdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/cdk/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
+      - run: npm ci
+      - name: Deploy the API (ECS shifts traffic to the new task set and rolls back on failure)
+        run: npx cdk deploy SahajApp --require-approval never --exclusively
+      - name: Smoke test
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name SahajApp --query "Stacks[0].Outputs[?OutputKey=='Url'].OutputValue" --output text)
+          curl -fsS --retry 10 --retry-delay 15 --retry-all-errors "$url/health"

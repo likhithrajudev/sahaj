@@ -128,10 +128,30 @@ async def health():
     return {"status": "ok"}
 
 
+class SinglePageApp(StaticFiles):
+    """The web app: a client-side route such as /app/documents gets index.html; a missing file (with an extension) stays a 404."""
+
+    async def get_response(self, path, scope):
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
+                raise
+            return await super().get_response("index.html", scope)
+
+
+WEB_DIST = Path(config.WEB_DIST)
+if WEB_DIST.joinpath("index.html").exists():
+    app.mount("/app", SinglePageApp(directory=WEB_DIST, html=True), name="web")
+
 if config.TEST_PAGE and config.ENVIRONMENT == "development":
     # A hand-test console for the whole API: http://127.0.0.1:8000/test/
-    @app.get("/", include_in_schema=False)
-    async def home():
-        return RedirectResponse("/test/")
-
     app.mount("/test", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="test")
+
+
+@app.get("/", include_in_schema=False)
+async def home():
+    if WEB_DIST.joinpath("index.html").exists():
+        return RedirectResponse("/app/")
+    return RedirectResponse("/test/" if config.TEST_PAGE and config.ENVIRONMENT == "development" else "/docs")

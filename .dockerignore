@@ -1,0 +1,14 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.cache
+**/dist
+**/cdk.out
+.git
+infra
+docs
+apps/api/tests
+apps/api/.env
+apps/api/.env.*
+**/*.db

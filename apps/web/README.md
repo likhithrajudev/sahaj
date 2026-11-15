@@ -1,10 +1,10 @@
 # @sahaj/web
 
-Frontend for Sahaj (not scaffolded yet). Scaffold your framework of choice here, keep the package name
-`@sahaj/web`, and import API types from `@sahaj/contracts`:
+The Sahaj web app: chat (voice and text), documents, privacy, offers and usage for customers; dashboard, desk, users and campaigns for staff.
 
-```ts
-import type { ServerEvent } from "@sahaj/contracts";
+```bash
+pnpm install
+pnpm dev:api          # the API on :8000
+pnpm --filter @sahaj/web dev   # http://localhost:5173/app/ (API calls are proxied)
+pnpm --filter @sahaj/web build # dist/, served by the API at /app in production
 ```
-
-The protocol is documented in [`docs/voice-api.md`](../../docs/voice-api.md); `apps/api/static/index.html` is a working reference client.

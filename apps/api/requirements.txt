@@ -23,6 +23,9 @@ prometheus-client
 # File storage: Amazon S3
 boto3
 
+# Working memory across workers (when REDIS_URL is set)
+redis
+
 # Reading uploaded PDFs
 pypdf
 

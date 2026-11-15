@@ -9,7 +9,16 @@ SARVAM_CHAT_MODEL = os.getenv("SARVAM_CHAT_MODEL", "sarvam-105b-conversations")
 
 # Knowledge base: Postgres + pgvector, cosine similarity over OpenAI embeddings (multilingual, so a Hindi question finds
 # an English clause). Changing the model or the dimension rebuilds the knowledge base on the next start.
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/sahaj")
+def _database_url() -> str:
+    # On AWS the parts come from the RDS secret (DB_HOST, DB_USER, ...) rather than one URL.
+    if os.getenv("DATABASE_URL") or not os.getenv("DB_HOST"):
+        return os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/sahaj")
+    from urllib.parse import quote
+    return (f"postgresql://{quote(os.environ['DB_USER'], safe='')}:{quote(os.environ['DB_PASSWORD'], safe='')}@{os.environ['DB_HOST']}:"
+            f"{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'sahaj')}?sslmode=require")
+
+
+DATABASE_URL = _database_url()
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 OPENAI_EMBED_PRICE_PER_M = float(os.getenv("OPENAI_EMBED_PRICE_PER_M", "0.02"))   # USD per million tokens (estimate)
@@ -39,7 +48,9 @@ PRICE_CACHED_PER_M = float(os.getenv("PRICE_CACHED_PER_M")) if os.getenv("PRICE_
 # Kill switch for policy recommendations. Off = Sahaj still explains and compares, but never recommends.
 ADVISORY_ENABLED = os.getenv("ADVISORY_ENABLED", "true").lower() in ("1", "true", "yes")
 
-LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")           # consent + audit + handoff records
+LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")
+# Postgres for the ledger when set (needed when more than one API process runs, e.g. blue/green deploys).
+LEDGER_URL = os.getenv("LEDGER_URL") or (DATABASE_URL if os.getenv("LEDGER_BACKEND") == "postgres" else "")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")                # protects /audit; endpoint is disabled if unset
 HANDOFF_WEBHOOK_URL = os.getenv("HANDOFF_WEBHOOK_URL")    # where human-handoff packets are delivered
 
@@ -99,6 +110,8 @@ MAX_FILES_PER_USER = int(os.getenv("MAX_FILES_PER_USER", "50"))
 # A sign-in that needs no Google account, for the test page. Works only when ENVIRONMENT=development AND the caller is
 # on this machine, so a deployed instance cannot be signed into this way even if the flag is left on.
 DEV_LOGIN = os.getenv("DEV_LOGIN", "false").lower() in ("1", "true", "yes")
+# The built web app (apps/web/dist), served at /app when present.
+WEB_DIST = os.getenv("WEB_DIST", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "dist"))
 # Serve the test console at /test (development only).
 TEST_PAGE = os.getenv("TEST_PAGE", "true").lower() in ("1", "true", "yes")
 
@@ -161,6 +174,11 @@ DEFAULT_TENANT_NAME = os.getenv("DEFAULT_TENANT_NAME", "Paytm")
 DB_APP_ROLE = os.getenv("DB_APP_ROLE", "sahaj_app")
 
 MARKETING_WEEKLY_CAP = int(os.getenv("MARKETING_WEEKLY_CAP", "3"))   # offers per person per 7 days
+
+# Verified replies are shown a few words at a time (TEXT_STREAMING), then the voice plays.
+TEXT_STREAMING = os.getenv("TEXT_STREAMING", "true").lower() in ("1", "true", "yes")
+STREAM_WORDS_PER_CHUNK = int(os.getenv("STREAM_WORDS_PER_CHUNK", "3"))
+STREAM_DELAY_MS = int(os.getenv("STREAM_DELAY_MS", "30"))
 
 # ---- Memory layers
 # 1. Working memory: the live state of a conversation (Redis when REDIS_URL is set, else this process), so a conversation

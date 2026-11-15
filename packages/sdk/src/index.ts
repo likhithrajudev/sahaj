@@ -134,6 +134,45 @@ export interface FinancialEvent {
   created_at: string;
 }
 
+export interface CreditCardInventoryInput {
+  label: string;
+  last_four?: string;
+  outstanding_balance: number;
+  minimum_due?: number;
+  due_day?: number;
+  annual_interest_rate_percent?: number;
+}
+
+export interface LoanInventoryInput {
+  label: string;
+  monthly_emi: number;
+  outstanding_principal: number;
+  due_day?: number;
+  annual_interest_rate_percent?: number;
+  remaining_months?: number;
+}
+
+export interface FinancialInventoryItem {
+  id: string;
+  type: "credit_card" | "loan";
+  label: string;
+  details: Omit<CreditCardInventoryInput, "label"> | Omit<LoanInventoryInput, "label">;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancialInventoryResponse {
+  consent: boolean;
+  consent_text: { purpose: "financial_profile"; title: string; version: string; text: string; withdrawal: string };
+  items: FinancialInventoryItem[];
+}
+
+export interface ReplaceFinancialInventoryInput {
+  credit_cards: CreditCardInventoryInput[];
+  loans: LoanInventoryInput[];
+  confirmed: true;
+}
+
 export interface CreditCheckInput extends ConfirmedAction {
   identity: { name: string; pan: string; date_of_birth: string; mobile: string };
 }
@@ -293,6 +332,22 @@ export class SahajClient {
 
   async usage(): Promise<UsageSummary> {
     return this.request("/users/me/usage");
+  }
+
+  async financialInventory(): Promise<FinancialInventoryResponse> {
+    return this.request("/financial/inventory");
+  }
+
+  async setFinancialInventoryConsent(granted: boolean, version: string): Promise<unknown> {
+    return this.request("/consents/financial_profile", { method: "PUT", body: { granted, version } });
+  }
+
+  async replaceFinancialInventory(input: ReplaceFinancialInventoryInput): Promise<{ items: FinancialInventoryItem[] }> {
+    return this.request("/financial/inventory", { method: "PUT", body: input });
+  }
+
+  async deleteFinancialInventoryItem(id: string): Promise<void> {
+    return this.request(`/financial/inventory/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async files(category?: string): Promise<FilesResponse> {

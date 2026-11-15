@@ -14,7 +14,7 @@ from services import cache, llm
 IntentName = Literal[
     "insurance_explain", "insurance_advice", "insurance_compare", "insurance_purchase", "insurance_fine_print", "insurance_web_search",
     "loan_explain", "loan_calculator", "loan_guidance", "loan_rates_comparison", "loan_web_search", "loan_application", "credit_check", "loan_fine_print",
-    "human_handoff", "greeting", "out_of_scope",
+    "financial_overview", "human_handoff", "greeting", "out_of_scope",
 ]
 INTENTS = IntentName.__args__
 

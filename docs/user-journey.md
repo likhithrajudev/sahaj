@@ -8,6 +8,8 @@ This document describes Sahaj from the person's point of view first, then explai
 
 **Primary persona — Asha, a first-time digital borrower and family decision-maker.** Asha lives in India, prefers Hindi or Hinglish, wants to understand health cover for her family and may need a personal loan. She has an offer letter, bank statement or policy document as a PDF/photo, but does not know which numbers matter. She wants the assistant to explain terms in plain language, compare only relevant options, calculate repayments, and help submit a request after she reviews the actual terms. She needs clear consent prompts, a human option, and no promise that a score guarantees approval.
 
+**Financial-tracking need — Asha wants one private view of upcoming card dues and current EMIs.** She may have several cards and loans, and wants the assistant to ask about due days, minimum dues, monthly instalments, balances and annual rates, then show exactly what it plans to save. This inventory is voluntary, separate from a credit-bureau check, and does not send details to a financial partner.
+
 **Supporting persona — Sahaj service executive.** The executive receives cases that need a person, can read the masked conversation summary, answer the customer, and schedule a video KYC appointment when the customer has opted in. The regulated lender's authorised official conducts V-CIP. The executive cannot see another customer's private document inventory.
 
 **System persona — authorised financial provider.** A separately installed credit-bureau, lender or insurer adapter returns the real score, offer, quote or application status. There are no provider adapters configured in this checkout, so action endpoints return `503 provider_unavailable` until those partnerships and credentials are in place. Sample catalogue data must never be presented as a live quote or offer.
@@ -219,6 +221,14 @@ If the local policy/KFS documents do not contain an answer about publicly availa
 ### 4.15 See a source behind an answer
 
 Each assistant response includes `structured.points[].sources` and `structured.sources[]` (`id`, `text`). The text is the exact clause or web result passage used by the answer. A text client should resolve each point's source IDs against `structured.sources` and show the matching text; the top-level `citations` field is a compatibility copy of that same list. The backend also keeps source IDs visible when the fact-check passed over retrieved evidence but the model omitted inline tags, and carries summary-only sources onto the first body point. Blocked safe replies have no source chips. Sources are returned with the answer, so no separate source fetch is needed.
+
+### 4.16 Track cards and EMIs
+
+1. Asha types `/inventory` or asks Sahaj in plain language to track her cards and EMIs. If needed, Sahaj first asks for conversation permission, then separately shows the optional `financial_profile` consent. The consent explains what is stored and that it is not sent to lenders or bureaus. Details supplied before this consent are not retained for the flow; Sahaj asks for them again after permission is granted.
+2. Sahaj asks whether she has credit cards to add or update. A no keeps existing cards. A yes prompts for a label, last four digits only, outstanding balance, minimum due, due day and annual interest rate if known. Full card numbers, CVVs and PINs are rejected.
+3. Sahaj asks the same add/update question for active loans or EMIs. For each, she can give its label or lender, monthly EMI, outstanding principal, due day, annual interest rate and remaining months.
+4. Sahaj shows the parsed cards and loans in a review card. It saves the whole inventory only when Asha replies yes. No or `/cancel` discards pending changes. Chat history and audit traces replace intake messages and read-backs with privacy placeholders.
+5. `GET /financial/inventory` and `/inventory show` show only Asha's own data while consent remains active. A natural question about dues reads from that saved inventory. `PUT /financial/inventory` supports a confirmed replacement for API clients; `DELETE /financial/inventory/{id}` removes one item. Withdrawal erases all saved entries.
 
 ---
 

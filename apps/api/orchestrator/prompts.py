@@ -50,6 +50,9 @@ loan_application
 credit_check
   The user asks to retrieve their own CIBIL or credit-bureau score, not to explain what a score is.
   Examples: "Check my CIBIL score" / "Can you fetch my credit report?" / "मेरा सिबिल स्कोर जाँचें"
+financial_overview
+  The user asks about their own saved credit cards, outstanding balances, payment due dates, pending EMIs, loan balances or interest rates. Use only the private inventory saved by the user; if they want to add or correct items, tell them to use /inventory.
+  Examples: "When is my next card payment due?" / "What EMIs do I have pending?" / "Show my saved loan balances" / "मेरी ईएमआई और देय तारीखें बताइए"
 insurance_fine_print
   The user wants the hidden terms, catches or extra costs of insurance: what is not obvious, what to watch out for, what reduces a claim, what the small print says, what others do not tell you.
   Examples: "What are the hidden things in my health policy?" / "what catches should I know before buying this plan?" / "policy mein kya chhupa hua hai?" / "क्लेम में पैसे कहाँ कटते हैं?"

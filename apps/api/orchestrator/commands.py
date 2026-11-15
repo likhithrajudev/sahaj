@@ -9,7 +9,7 @@ class Command:
     argument: str = ""
 
 
-COMMANDS = {"/help", "/usage", "/clear", "/language"}
+COMMANDS = {"/help", "/usage", "/clear", "/language", "/inventory", "/cancel"}
 
 
 def parse(text: str) -> Optional[Command]:

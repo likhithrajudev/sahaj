@@ -125,6 +125,22 @@ def test_withdrawing_what_was_never_granted_changes_nothing(erased):
     assert decide("memory", False)["withdrawn"] == [] and erased == [] and consent.history(USER.subject) == []
 
 
+def test_financial_profile_grant_and_withdrawal_purge_private_inventory(monkeypatch):
+    calls = []
+
+    async def erase(user, purpose):
+        calls.append((user.id, purpose))
+        return {"financial_inventory_items": 2}
+
+    monkeypatch.setattr(consents, "_erase", erase)
+    decide("conversation", True)
+    decide("financial_profile", True)
+    result = decide("financial_profile", False)
+    assert result["erased"]["financial_inventory_items"] == 2
+    assert calls == [(USER.id, "financial_profile"), (USER.id, "financial_profile")]
+    assert not consent.is_active(USER.subject, "financial_profile")
+
+
 def test_a_failed_erasure_is_reported_but_the_withdrawal_stands(monkeypatch):
     async def boom(user, purpose):
         raise OSError("storage down")
@@ -263,7 +279,7 @@ def test_consent_screen_api(monkeypatch):
         assert (await c.get("/consents")).status_code == 401
 
         listing = (await c.get("/consents", headers=h)).json()
-        assert len(listing["items"]) == 7 and listing["missing_required"] == ["conversation"]
+        assert len(listing["items"]) == len(consent.PURPOSES) and listing["missing_required"] == ["conversation"]
         mem = next(i for i in listing["items"] if i["purpose"] == "memory")
         assert mem["action"] == "ask" and mem["text"] and mem["withdrawal"] and mem["title"]
 

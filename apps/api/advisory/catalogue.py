@@ -1,4 +1,4 @@
-"""The product catalogue. Today a fictional sample file; later fed from an insurer or aggregator API."""
+"""Fictional catalogue fixture for deterministic advisory-engine tests; never use sample plans in user-facing flows."""
 import hashlib
 import json
 import re

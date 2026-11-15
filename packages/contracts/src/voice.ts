@@ -15,7 +15,7 @@ import type { User } from "./http";
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
 export type ConsentPurpose =
   | "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records"
-  | "video_kyc" | "financial_application" | "credit_bureau";
+  | "video_kyc" | "financial_application" | "credit_bureau" | "financial_profile";
 /** "advice" is the needs-analysis / recommendation flow. */
 export type AgentName = "insurance" | "loan" | "general" | "advice";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
@@ -156,6 +156,9 @@ export interface BudgetExceededEvent {
   budget_usd: number;
   resets_at: string;
 }
+
+/** A new offer in the person's inbox (only with the marketing consent). */
+export interface InboxEvent { type: "inbox"; item: { title: string; body: string; cta_label: string | null; has_image: boolean } }
 
 export interface UserEvent {
   type: "user";
@@ -359,6 +362,7 @@ export type ServerEvent =
   | ConsentRequiredEvent
   | ConsentStatusEvent
   | StatusEvent
+  | InboxEvent
   | UsageWarningEvent
   | BudgetExceededEvent
   | CardEvent

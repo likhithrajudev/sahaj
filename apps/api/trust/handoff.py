@@ -29,6 +29,7 @@ async def create(subject: str, reason: str, history: List[dict], trace_id: str, 
     from observability.metrics import CASE_EVENTS
     CASE_EVENTS.labels("opened" if created else "joined").inc()
     light = {k: case[k] for k in ("id", "reference", "kind", "reason", "priority", "status")}
+    case["executives_online"] = bool(live.executives.get(user.tenant_id))
     await live.to_customer(user.id, {"type": "case_attached", "case_id": case["id"], "case": light})   # every open conversation
     await live.to_executives({"type": "case_opened" if created else "case_updated",
                               "case": {k: case[k] for k in ("id", "reference", "kind", "reason", "priority", "status", "language")}

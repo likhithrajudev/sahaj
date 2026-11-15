@@ -2,6 +2,7 @@
 Each line carries the request id of the request that produced it."""
 import json
 import logging
+import re
 import sys
 
 import config
@@ -21,7 +22,22 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(out, ensure_ascii=False)
 
 
+TOKEN_IN_URL = re.compile(r"(access_token=)[^&\s\"']+")
+
+
+class RedactTokens(logging.Filter):
+    """Uvicorn logs full URLs, and a WebSocket URL can carry ?access_token=. Mask it before anything is written."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "access_token=" in message:
+            record.msg, record.args = TOKEN_IN_URL.sub(r"\1[redacted]", message), None
+        return True
+
+
 def setup() -> None:
+    for name in ("uvicorn.access", "uvicorn.error"):
+        logging.getLogger(name).addFilter(RedactTokens())
     root = logging.getLogger("sahaj")
     if root.handlers:
         return

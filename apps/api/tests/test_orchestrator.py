@@ -131,13 +131,49 @@ def test_rates_and_out_of_scope_get_fixed_honest_text_without_the_model(stubs):
     assert calls["generate"] == 0   # nothing was improvised
 
 
-def test_advice_needs_permission_first(stubs):
+def test_advice_needs_permission_first(stubs, monkeypatch):
     calls, state = stubs
     state["intent"] = Intent(intent="insurance_advice", confidence=0.95)
+    monkeypatch.setattr(g.catalogue, "is_sample", lambda: False)
     s = FakeSession()
     s.consented = False
     result, _, session = run("which plan should I buy", s)
     assert result["turn"].request_consent == "needs_analysis" and session.pending == ("which plan should I buy", "en-IN")
+
+
+def test_sample_insurance_advice_uses_generic_live_search(stubs, monkeypatch):
+    _, state = stubs
+    state["intent"] = Intent(intent="insurance_advice", confidence=0.95)
+    monkeypatch.setattr(g.catalogue, "is_sample", lambda: True)
+    calls = []
+
+    async def live_search(state, run_config, domain, query_override=None):
+        calls.append((domain, query_override))
+        return Turn("Current insurer pages [web:1].", sources={"web:1": "Official product page."})
+
+    monkeypatch.setattr(g, "_web_search_turn", live_search)
+    result, _, session = run("Which health insurance should I buy? I have diabetes.", FakeSession())
+
+    assert result["turn"].sources == {"web:1": "Official product page."}
+    assert calls == [("insurance", "current health insurance plans India official insurer product features")]
+    assert session.flow is None and session.pending is None
+
+
+def test_sample_insurance_comparison_uses_live_search(stubs, monkeypatch):
+    _, state = stubs
+    state["intent"] = Intent(intent="insurance_compare", confidence=0.95, search="compare Lotus and Neem plans")
+    monkeypatch.setattr(g.catalogue, "is_sample", lambda: True)
+    calls = []
+
+    async def live_search(state, run_config, domain, query_override=None):
+        calls.append((domain, query_override))
+        return Turn("Current insurer pages [web:1].", sources={"web:1": "Official product page."})
+
+    monkeypatch.setattr(g, "_web_search_turn", live_search)
+    result, _, _ = run("Compare two health plans")
+
+    assert result["turn"].sources == {"web:1": "Official product page."}
+    assert calls == [("insurance", "compare Lotus and Neem plans")]
 
 
 def test_an_active_conversation_gets_the_first_look(stubs, monkeypatch):

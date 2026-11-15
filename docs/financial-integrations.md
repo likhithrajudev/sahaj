@@ -20,6 +20,9 @@ Adapters should call only partner APIs approved for Sahaj's business relationshi
 
 ## Endpoints
 
+- `GET /financial/inventory` lists only the signed-in person's saved cards and loans while versioned `financial_profile` consent is active. `PUT /financial/inventory` replaces the full list after `confirmed: true`; `DELETE /financial/inventory/{id}` removes one owned item. Chat intake uses `/inventory` or a plain-language typed request to track cards/EMIs. It shows a review card and saves only after an explicit yes. A no for a category keeps its existing items. Withdrawal erases the private inventory. Expired consent hides old items; the next inventory read or renewal erases them. Only card last four digits are allowed, never full card numbers, CVVs, PINs or passwords.
+- The private inventory is user-entered tracking data. It does not calculate CIBIL scores and is not sent to lenders, insurers or credit bureaus. Read it through `GET /financial/inventory` or the `financialInventory()` SDK method.
+
 - `GET /financial/providers` lists installed provider capabilities.
 - `POST /financial/credit-check` requires the displayed `credit_bureau` consent version and `confirmed: true`. The response includes the user's score; the stored event contains only a provider reference and status.
 - `POST /financial/loan/offers` requires a credit-check event belonging to this user, from the same provider, and no older than one day. It also requires `financial_application` consent.

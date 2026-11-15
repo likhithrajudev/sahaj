@@ -67,6 +67,14 @@ PURPOSES = {
             "and account numbers are masked. Only you can open them, and withdrawing consent deletes them all."
         ),
     },
+    "marketing": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "Sahaj can show you offers and updates about insurance and loan products in your inbox in the app. "
+            "What you say in your conversations is not used to choose them. You will get at most a few a week, "
+            "and you can stop at any time."
+        ),
+    },
     "video_kyc": {
         "version": "2026-11-draft-2",
         "text": (
@@ -97,6 +105,16 @@ PURPOSES = {
             "partner may process the request under their own terms."
         ),
     },
+    "financial_profile": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "Sahaj can store the credit-card and loan details I choose to provide, including labels, card last four digits, "
+            "balances, payment due days, EMI amounts and interest rates, so I can review my own financial inventory and "
+            "get calculations. I will not provide a full card number, CVV, PIN or password. These details are not sent to "
+            "a lender or credit bureau by this feature. I can view, edit or delete them, and withdrawing this consent erases "
+            "the saved inventory."
+        ),
+    },
 }
 
 
@@ -117,6 +135,8 @@ META = {
                           "withdrawal": "What Sahaj learned from your documents is erased. The files stay."},
     "conversation_records": {"title": "Keep my voice recordings and transcripts", "required": False, "requires": "conversation",
                              "ttl_days": 365, "withdrawal": "Every stored recording and transcript is deleted."},
+    "marketing": {"title": "Show me offers and updates", "required": False, "requires": None, "ttl_days": 365,
+                  "withdrawal": "You stop receiving offers, and the ones in your inbox are removed."},
     "video_kyc": {"title": "Video identity verification", "required": False, "requires": None, "ttl_days": 365,
                   "withdrawal": "Future Sahaj appointment requests stop. The regulated provider manages records it already holds."},
     "financial_application": {"title": "Share details for an insurance or loan request", "required": False,
@@ -124,6 +144,8 @@ META = {
                               "withdrawal": "Sahaj stops sending new application details. Data already sent must be handled with the provider."},
     "credit_bureau": {"title": "Request my credit score", "required": False, "requires": "conversation", "ttl_days": 1,
                       "withdrawal": "Sahaj stops making new bureau requests. A request already sent cannot be recalled."},
+    "financial_profile": {"title": "Track my cards and EMIs", "required": False, "requires": "conversation", "ttl_days": 365,
+                          "withdrawal": "Your saved card and loan inventory is erased."},
 }
 assert set(META) == set(PURPOSES), "every purpose needs presentation metadata"
 

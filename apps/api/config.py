@@ -165,6 +165,8 @@ DEFAULT_TENANT_NAME = os.getenv("DEFAULT_TENANT_NAME", "Paytm")
 # The restricted Postgres role requests run as, so row-level security applies to them. Created at startup.
 DB_APP_ROLE = os.getenv("DB_APP_ROLE", "sahaj_app")
 
+MARKETING_WEEKLY_CAP = int(os.getenv("MARKETING_WEEKLY_CAP", "3"))   # offers per person per 7 days
+
 # ---- Memory layers
 # 1. Working memory: the live state of a conversation (Redis when REDIS_URL is set, else this process), so a conversation
 #    can be resumed after a reconnect or on another worker.

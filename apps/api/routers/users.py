@@ -67,15 +67,16 @@ async def delete_me(request: Request, user: store.User = Depends(current_user)):
 
 @router.get("/users/me/export")
 async def export_my_data(user: store.User = Depends(current_user)):
-    """Everything Sahaj holds about the person, as one JSON download: profile, consent history, memory, the list of
-    stored files (download each from /files/{id}) and the ratings they gave."""
+    """Everything the person can export: profile, consent history, memory, private inventory, files and feedback."""
     from memory import episodic
+    from financial import inventory as inventory_store
     consents = [{"purpose": e["payload"]["purpose"], "event": e["payload"]["event"], "version": e["payload"]["version"],
                  "recorded_at": e["created_at"]} for e in ledger.entries(subject=user.subject, kind="consent")]
     data = {"exported_at": time.time(), "profile": user.public(), "consents": consents,
             "memory": [{k: v for k, v in m.items() if k != "embedding"} for m in await memory_store.all_for(user.id)],
             "conversations": await episodic.list_for(user.id, 500),
             "files": await file_store.list_for(user.id),
+            "financial_inventory": await inventory_store.list_for(user.id) if consent.is_active(user.subject, "financial_profile") else [],
             "feedback": await feedback_store.for_user(user.id),
             "note": "Conversation audit records are kept without your identity (they carry a random session id only)."}
     return JSONResponse(jsonable_encoder(data), headers={"Content-Disposition": 'attachment; filename="sahaj-my-data.json"'})

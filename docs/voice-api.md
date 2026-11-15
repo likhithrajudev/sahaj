@@ -36,6 +36,14 @@ Some conversations need a person: when the customer asks, when they complain or 
 - `POST /desk/cases/{id}/claim` (409 if someone was first), `/release`, `/messages` (`{"text"}`), `/video-kyc` (`{"scheduled_for": "<ISO time with zone>", "meeting_url": "https://…"}`), `/resolve` (`{"outcome": "resolved"|"escalated_offline"|"no_response"|"duplicate", "resolution", "message"}`).
 - Customer messages reach executives masked (`[PAN_1]`, `[PHONE_1]`). Every claim, release, booking and close is written to the audit ledger with who did it.
 
+## Offers (marketing)
+
+Offers go only to people who granted the `marketing` consent, at most 3 per person per 7 days (`MARKETING_WEEKLY_CAP`), to their in-app inbox.
+
+- **Admins:** `POST /admin/campaigns` (`title`, `body`, optional `cta_label`, `cta_url` (https), `audience`: `languages`, `platforms`), `POST /admin/campaigns/{id}/image` (PNG/JPEG/WebP up to 5 MB), `GET /admin/campaigns/{id}` (`audience_size` before sending), `POST /admin/campaigns/{id}/send`, `POST /admin/campaigns/{id}/cancel`, `GET /admin/campaigns` (recipients, seen, clicked). A campaign is sent once; each send is in the audit ledger.
+- **Customers:** `GET /inbox`, `POST /inbox/{id}/seen`, `POST /inbox/{id}/click` (returns the link), `DELETE /inbox/{id}`, `GET /inbox/{id}/image`. An open conversation receives `{"type":"inbox","item":{"title","body","cta_label","has_image"}}` when an offer arrives.
+- Withdrawing `marketing` removes every offer in the person's inbox.
+
 ## Usage and spending limit
 
 Every model call, speech-to-text request and text-to-speech request a person causes is recorded with its estimated cost in US dollars. Each person may spend **$5 a month** by default (calendar month, UTC); an admin can change it per person.
@@ -56,6 +64,8 @@ Consent belongs to the **signed-in person**, not to a connection: grant it once 
 | `GET /consents` | Every purpose: `purpose`, `title`, `text` (show verbatim), `version`, `required`, `requires`, `withdrawal` (what withdrawing does, for the confirm dialog), `granted`, `granted_at`, `expires_at`, and `action`: `ask` (never decided or withdrawn), `renew` (expired, or the text changed) or `none`. `missing_required` lists what must be granted before Sahaj can be used (`conversation`). |
 | `PUT /consents/{purpose}` | `{"granted": true, "version": "<the version you showed>"}` or `{"granted": false}`. Granting **requires** `version`, so the record proves which text was agreed to. |
 | `GET /consents/history?purpose=` | The person's own record, oldest first: event, version, text hash, channel, request id, expiry. |
+
+`financial_profile` is optional and requires `conversation`. It covers only the private inventory the person chooses to enter: card label and last four digits, balance/minimum due/due day, and loan label, EMI, principal, due day and annual rate. It does not fetch a credit score or share data with a lender. Withdrawing it erases the inventory. If consent expires, items are hidden and stale records are erased on the next inventory read or consent renewal.
 
 Behaviour to design for:
 - **Stale text.** If `version` is not the current one, you get `409` with `detail.code = "stale_version"` and `detail.current` (the new text and version): show it and ask again.
@@ -111,6 +121,7 @@ Sahaj does not virus-scan uploaded files.
 
 ## Calculators and financial actions
 
+- `GET /financial/inventory` lists the signed-in person's own saved cards and loans only while `financial_profile` consent is active. `PUT /financial/inventory` replaces that inventory and requires active consent plus `confirmed: true`; `DELETE /financial/inventory/{id}` deletes one owned item. Each item is limited to labels, optional card last four digits, balances, due day, EMI, annual interest rate and remaining loan months. Full card numbers, CVVs, PINs and passwords are not accepted by the assistant flow.
 - `POST /calculators/emi` accepts `principal`, `annual_rate_percent` and `tenure_months`; `POST /calculators/prepayment` adds `prepay_amount` and optional `mode` (`reduce_tenure` or `reduce_emi`). Both require sign-in, return deterministic calculations with a reducing-balance disclosure, and reject out-of-range inputs. They are estimates, not lender quotes.
 - `GET /financial/providers` lists installed credit-bureau, lender and insurer adapters. `POST /financial/credit-check` requests an actual provider credit check after the person sees and grants the versioned `credit_bureau` consent and confirms the selected provider. It does not derive a CIBIL score from a formula. With no authorised adapter configured it returns `503 provider_unavailable`.
 - `POST /financial/loan/offers` requires a recent credit check from the same provider plus `financial_application` consent. The person reviews the lender's offer and Key Facts Statement (KFS), then `POST /financial/loan/apply` submits only after explicit KFS acceptance and final confirmation. A lender makes the decision.
@@ -158,7 +169,7 @@ POST /chat/stream
 → data: {"type":"user",...}  {"type":"status",...}  {"type":"assistant",...}  {"type":"done"}
 ```
 
-Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. On text messages only, `/help`, `/usage`, `/clear`, and `/language <code>` are handled as shortcuts without a model call; they do not run on audio turns. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
+Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. On text messages only, `/help`, `/usage`, `/clear`, `/cancel`, `/inventory`, `/inventory show`, and `/language <code>` are handled as shortcuts; they do not run on audio turns. A plain-language request to track or update cards or EMIs also starts the intake. `/inventory` asks whether to add or update cards and EMIs, shows a review card, and saves only after a clear yes. A no at a category keeps its saved items. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
 
 ### Live insurance search
 

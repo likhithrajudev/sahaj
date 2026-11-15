@@ -57,4 +57,5 @@ FEEDBACK = Counter("sahaj_feedback_total", "Ratings given to replies", ["rating"
 CONSENT_EVENTS = Counter("sahaj_consent_events_total", "Consent decisions", ["purpose", "decision"])
 COST_USD = Counter("sahaj_cost_usd_total", "Estimated spend in US dollars", ["provider", "kind", "channel"])
 BUDGET_EVENTS = Counter("sahaj_budget_events_total", "Spending-limit events", ["event"])
+MARKETING_EVENTS = Counter("sahaj_marketing_events_total", "Offers delivered, seen and clicked", ["event"])
 CASE_EVENTS = Counter("sahaj_case_events_total", "Executive desk activity", ["event"])

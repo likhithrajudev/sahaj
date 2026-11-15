@@ -18,7 +18,7 @@ from auth import feedback as feedback_store
 from rag import ingest, store
 from rag.embeddings import warm_up
 from orchestrator import registry
-from routers import audit, auth, calculators, chat, consents, desk, feedback, files, financial, ops, platform, procedures, search, stt, usage, users, voice
+from routers import marketing as marketing_router, audit, auth, calculators, chat, consents, desk, feedback, files, financial, inventory, ops, platform, procedures, search, stt, usage, users, voice
 from storage import blob, files as file_store, index as doc_index
 from usage import ledger as usage_ledger
 from desk import store as desk_store
@@ -72,8 +72,12 @@ async def lifespan(app: FastAPI):
         await desk_store.init_schema()  # the executive desk: cases and their threads
         from financial import providers as financial_providers, store as financial_store
         await financial_store.init_schema()
+        from financial import inventory as financial_inventory
+        await financial_inventory.init_schema()
         financial_providers.load_configured()
         from memory import episodic, procedural, semantic
+        from marketing import store as marketing_store
+        await marketing_store.init_schema()
         await episodic.init_schema()    # memory layer 2: past conversations
         await semantic.init_schema()    # memory layer 3: facts with embeddings
         await procedural.init_schema()  # memory layer 4: versioned prompts and workflows
@@ -111,6 +115,8 @@ app.include_router(platform.router)
 app.include_router(search.router)
 app.include_router(financial.router)
 app.include_router(calculators.router)
+app.include_router(inventory.router)
+app.include_router(marketing_router.router)
 
 
 @app.exception_handler(auth_store.Unavailable)

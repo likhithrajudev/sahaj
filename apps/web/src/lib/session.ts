@@ -4,7 +4,7 @@ import { MicUnavailable, Recorder } from "@/lib/audio/recorder";
 import { api } from "@/lib/auth";
 import type { StringKey } from "@/lib/i18n";
 import { VoiceSocket } from "@/lib/socket";
-import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson, type TimelineItem } from "@/store/session";
+import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson, type ShownCard, type TimelineItem } from "@/store/session";
 import { closeAllSheets, openSheet, useUi } from "@/store/ui";
 
 /**
@@ -44,6 +44,9 @@ function settle(turn: "idle" | "speaking" = "idle") {
   const timeline = get().timeline.some(isStreaming) ? get().timeline.filter((i) => !isStreaming(i)) : get().timeline;
   set({ turn, timeline, status: null, statusHistory: turn === "idle" ? [] : get().statusHistory, level: 0 });
 }
+
+const SHOWN_CARDS: ReadonlySet<string> = new Set<ShownCard["type"]>(["profile_summary", "recommendation", "comparison", "loan_calculation"]);
+const isShownCard = (card: { type: string }): card is ShownCard => SHOWN_CARDS.has(card.type);
 
 const isStreaming = (i: TimelineItem) => i.kind === "assistant" && !!i.streaming;
 
@@ -180,7 +183,9 @@ function handleEvent(e: ServerEvent) {
       break;
 
     case "card":
-      if (e.card.type === "financial_workflow") break;
+      // Only cards this app can draw. The server also sends kinds it has no design for yet (financial inventory,
+      // financial workflow); the reply's text still says what they hold, so they are left out rather than drawn wrong.
+      if (!isShownCard(e.card)) break;
       pushItem({ kind: "card", card: e.card, traceId: e.trace_id });
       if (useUi.getState().panelItemId) useUi.setState({ panelItemId: null }); // panel follows the newest card
       break;

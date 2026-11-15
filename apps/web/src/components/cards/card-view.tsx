@@ -13,13 +13,16 @@ export function CardView({ card }: { card: Card }) {
     case "recommendation": return <Recommendation card={card} />;
     case "comparison": return <ComparisonCard card={card} />;
     case "loan_calculation": return <LoanCard card={card} />;
+    default: return null; // a card kind this app does not know: draw nothing rather than crash
   }
 }
 
 /** Desktop: the timeline shows a one-line summary; the full card opens in the side panel. */
 export function CardSummary({ card, itemId }: { card: Card; itemId: string }) {
   const t = useT();
-  const { icon, title, sub } = summarise(card, t);
+  const summary = summarise(card, t);
+  if (!summary) return null; // a card kind this app does not know
+  const { icon, title, sub } = summary;
   return (
     <button type="button" onClick={() => useUi.setState({ panelItemId: itemId, panelOpen: true })}
       className="card group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-shadow duration-200 hover:shadow-raised">
@@ -35,7 +38,7 @@ export function CardSummary({ card, itemId }: { card: Card; itemId: string }) {
   );
 }
 
-function summarise(card: Card, t: ReturnType<typeof useT>): { icon: string; title: string; sub: string } {
+function summarise(card: Card, t: ReturnType<typeof useT>): { icon: string; title: string; sub: string } | null {
   switch (card.type) {
     case "recommendation": {
       const top = card.plans[0];
@@ -53,5 +56,7 @@ function summarise(card: Card, t: ReturnType<typeof useT>): { icon: string; titl
       return card.kind === "emi"
         ? { icon: "calculate", title: `${t("monthlyEmi")} ${rupees(card.result.emi)}`, sub: `${rupees(card.inputs.principal)} · ${card.inputs.annual_rate_percent}% · ${card.inputs.tenure_months} ${t("months")}` }
         : { icon: "savings", title: `${t("interestSaved")} ${rupees(card.result.interest_saved)}`, sub: `${t("prepayment")} ${rupees(card.inputs.prepay_amount)}` };
+    default:
+      return null;
   }
 }

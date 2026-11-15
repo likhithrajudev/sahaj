@@ -41,6 +41,7 @@ async def ready():
     return {"status": "ready", "storage": storage, "knowledge_base": await _knowledge_base(),
             "features": {"google_sign_in": bool(config.GOOGLE_CLIENT_IDS),
                          "web_search": bool(config.FIRECRAWL_API_KEY),
+                         "insurance_web_search": bool(config.FIRECRAWL_API_KEY),
                          "financial_providers": providers.capabilities()}}
 
 

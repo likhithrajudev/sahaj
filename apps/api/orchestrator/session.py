@@ -362,7 +362,6 @@ class Session:
             spoken = turn.text
         shown = " ".join([spoken] + turn.append)  # fixed text (such as disclosures) goes with the answer either way
 
-        cited = guardrails.citations(shown)
         # The history feeds hand-off packets, so personal answers are replaced by a placeholder.
         remembered_user = "[gave personal details]" if turn.sensitive_input else text
         remembered_reply = "[read back the person's details]" if turn.kind == "confirm" else guardrails.strip_citations(shown)
@@ -376,10 +375,11 @@ class Session:
             if "plans" in turn.card:  # what "the first one" means in the next question
                 self.focus = [p.get("product_id") or p["id"] for p in turn.card["plans"]]
             await self.ws.send_json({"type": "card", "kind": turn.kind, "card": turn.card, "trace_id": trace.id})
+        structured = structure.build(spoken, turn.append, {} if problem else turn.sources, turn.kind)
         await self.ws.send_json({
             "type": "assistant", "agent": turn.agent, "text": shown, "trace_id": trace.id,
-            "citations": [{"id": c, "text": turn.sources[c]} for c in cited if c in turn.sources],
-            "structured": structure.build(spoken, turn.append, turn.sources, turn.kind),
+            "citations": structured["sources"],
+            "structured": structured,
             "verification": suggest.verification(blocked=bool(problem), from_cache=turn.from_cache, prechecked=turn.prechecked,
                                                  judged=turn.judge and bool(turn.sources) and not turn.prechecked,
                                                  sources=len(turn.sources), kind=turn.kind),

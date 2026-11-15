@@ -25,7 +25,7 @@ Maps what Sahaj does to the regulatory expectations it must meet. **Every row ne
 | Full audit trail | Product requirement | Every turn records the masked transcript, route, answer, guardrail verdict and ids. `/audit/verify` detects tampering. | Built on SQLite. Move to Postgres and anchor the head hash outside the database. |
 | IRDAI requirements (solicitation, disclosures, policyholder protection, grievance, record keeping) | **Not yet mapped** | To be derived from IRDAI's regulations for the registration category Sahaj applies for. | **Open.** Needs the registration category decision first. |
 | DPDP Act (consent, purpose limitation, consent managers) | **Not researched** | Consent is already purpose-bound and revocable. | **Open.** |
-| Video KYC | Chosen route | With the `video_kyc` consent, a request becomes a desk case; an executive books the call (time and HTTPS link) and the customer is told live. RBI requires a person to conduct it. | Scheduling built. **The video call itself is not**: pick a V-CIP vendor. |
+| Video KYC | Chosen route | With the `video_kyc` consent, a request becomes a desk case; an executive books the appointment (time and HTTPS link) and the customer is told live. The authorised official of the regulated entity must conduct V-CIP. | Case creation and scheduling built. **The V-CIP session, provider connection, identity checks, recording and verification result are not**: integrate an approved provider and regulated-entity process. |
 
 ## Known technical limits
 

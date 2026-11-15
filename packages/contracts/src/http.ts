@@ -98,7 +98,7 @@ export interface ChatStreamRequest {
 export interface StoredFile {
   id: string;
   filename: string;
-  content_type: "application/pdf" | "image/png" | "image/jpeg" | "image/webp";
+  content_type: string;
   size_bytes: number;
   sha256: string;
   created_at: string;
@@ -107,6 +107,37 @@ export interface StoredFile {
    *  read (scans and photos by Sarvam OCR), only with the document_analysis consent. */
   index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "over_budget" | "failed";
   indexed_chunks: number;
+  category: string;
+}
+
+export interface EmiCalculationRequest {
+  principal: number;
+  annual_rate_percent: number;
+  tenure_months: number;
+}
+
+export interface EmiCalculationResponse {
+  kind: "emi";
+  currency: "INR";
+  method: "reducing_balance";
+  inputs: EmiCalculationRequest;
+  result: { emi: number; total_payment: number; total_interest: number };
+  disclaimer: string;
+}
+
+export interface PrepaymentCalculationRequest extends EmiCalculationRequest {
+  prepay_amount: number;
+  mode?: "reduce_tenure" | "reduce_emi";
+}
+
+export interface PrepaymentCalculationResponse {
+  kind: "prepayment";
+  currency: "INR";
+  method: "reducing_balance";
+  inputs: PrepaymentCalculationRequest & { mode: "reduce_tenure" | "reduce_emi" };
+  result: { emi_before: number; emi_after: number; months_before: number; months_after: number;
+    months_saved: number; interest_before: number; interest_after: number; interest_saved: number };
+  disclaimer: string;
 }
 
 /** GET /files */
@@ -146,7 +177,20 @@ export interface ReadyResponse {
   status: "ready";
   storage: "ok" | "down" | "not configured";
   knowledge_base: { ok: boolean; clauses: number; domains?: Record<string, number>; problem?: string };
-  features: { google_sign_in: boolean; insurance_web_search: boolean };
+  features: { google_sign_in: boolean; web_search: boolean; insurance_web_search: boolean; financial_providers: FinancialProviderCapability[] };
+}
+
+export interface FinancialProviderCapability {
+  id: string;
+  capabilities: ("credit_check" | "loan_offers" | "loan_apply" | "insurance_quotes" | "insurance_purchase")[];
+}
+
+export interface FinancialEvent {
+  id: string;
+  kind: "credit_check" | "loan_application" | "insurance_application";
+  provider: string;
+  status: string;
+  created_at: string;
 }
 
 export interface LanguagesResponse {
@@ -287,12 +331,22 @@ export const API_ROUTES = {
   consents: "/consents",
   consentsHistory: "/consents/history",
   files: "/files",
+  file: "/files/{id}",
   filesAnalysisConsent: "/files/analysis/consent",
+  emiCalculator: "/calculators/emi",
+  prepaymentCalculator: "/calculators/prepayment",
+  financialProviders: "/financial/providers",
+  creditCheck: "/financial/credit-check",
+  loanOffers: "/financial/loan/offers",
+  loanApply: "/financial/loan/apply",
+  insuranceQuotes: "/financial/insurance/quotes",
+  insurancePurchase: "/financial/insurance/purchase",
   feedback: "/feedback",
   ready: "/ready",
   usage: "/users/me/usage",
   adminUsage: "/admin/usage",
   cases: "/cases",
+  deskVideoKyc: "/desk/cases/{id}/video-kyc",
   deskQueue: "/desk/queue",
   deskSocket: "/ws/desk",
   authConfig: "/auth/config",

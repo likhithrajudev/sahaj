@@ -2,7 +2,7 @@
 
 Sahaj exposes authenticated workflow endpoints for credit checks, loan offers and applications, insurance quotes and purchases. The endpoints require the relevant versioned consent, record the selected provider and action, and require a final user confirmation for submissions. A loan offer request also requires a fresh credit check from the same provider. Applicant identity, health and income fields are passed to the selected adapter for the request; Sahaj does not store those fields or the bureau score. It stores only a user-owned provider reference and status.
 
-There are no partner modules configured in this checkout. The endpoints return `503 provider_unavailable` until a lender, insurer or credit-bureau integration is installed. They do not mock a CIBIL score, eligibility result, quote, approval, policy or payment. The test console cannot complete these workflows until an authorised partner module is configured.
+There are no partner modules configured in this checkout. The endpoints return `503 provider_unavailable` until a lender, insurer or credit-bureau integration is installed. A CIBIL score is a bureau response, not a score Sahaj can calculate from PAN, income or other user-entered fields. These endpoints do not mock a score, eligibility result, quote, approval, policy or payment. The test console cannot complete these workflows until an authorised partner module is configured.
 
 ## Install an adapter
 
@@ -27,5 +27,6 @@ Adapters should call only partner APIs approved for Sahaj's business relationshi
 - `POST /financial/insurance/quotes` requires `financial_application` consent and applicant answers.
 - `POST /financial/insurance/purchase` requires the selected quote, accepted terms version and final confirmation. Checkout links must use HTTPS.
 - `GET /financial/events` lists only the signed-in user's stored provider references and statuses.
+- `POST /calculators/emi` and `POST /calculators/prepayment` are local reducing-balance estimates; they do not call a lender or affect a credit decision.
 
 Consent text is a draft and needs compliance review before production. A TransUnion CIBIL score is not an approval decision. Its marketplace describes API-based consumer score/report delivery for partners and members, and CIBIL states that it acts on the end user's explicit consent; Sahaj must obtain its own applicable partner access and approval before enabling a real adapter.

@@ -191,10 +191,11 @@ async def purge(user, categories: Optional[tuple] = None) -> int:
                                                          (user.id, cats))).fetchall()]
     try:
         store, covered = blob.get(), tuple(prefixes(user, categories))
+        allowed = covered + (f"users/{user.id}/",)
         for prefix in covered:
             await store.delete_prefix(prefix)
         for name in names:                    # anything stored elsewhere (an earlier layout) is removed by name
-            if not name.startswith(covered):
+            if name.startswith(allowed) and not name.startswith(covered):
                 await store.delete(name)
     except Unavailable:
         pass   # storage was never set up, so nothing is stored

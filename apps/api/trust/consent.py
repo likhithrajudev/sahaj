@@ -68,11 +68,14 @@ PURPOSES = {
         ),
     },
     "video_kyc": {
-        "version": "2026-11-draft-1",
+        "version": "2026-11-draft-2",
         "text": (
-            "To verify your identity, we will record a live video session, capture your photo and "
-            "compare it with your identity documents, as required for KYC. "
-            "You can withdraw consent at any time."
+            "With your permission, Sahaj will create a case so the service team can arrange a video identity-check "
+            "appointment. An authorised official of the relevant regulated entity must conduct the live verification "
+            "and may record the session or capture your photo and documents under that entity's process. "
+            "Sahaj does not conduct the identity check. This request does not guarantee a loan or insurance approval. "
+            "You can withdraw this consent for future appointments; records already held by the provider are subject "
+            "to that provider's retention rules."
         ),
     },
     "financial_application": {
@@ -115,7 +118,7 @@ META = {
     "conversation_records": {"title": "Keep my voice recordings and transcripts", "required": False, "requires": "conversation",
                              "ttl_days": 365, "withdrawal": "Every stored recording and transcript is deleted."},
     "video_kyc": {"title": "Video identity verification", "required": False, "requires": None, "ttl_days": 365,
-                  "withdrawal": "Your verification session data is deleted."},
+                  "withdrawal": "Future Sahaj appointment requests stop. The regulated provider manages records it already holds."},
     "financial_application": {"title": "Share details for an insurance or loan request", "required": False,
                               "requires": "conversation", "ttl_days": 1,
                               "withdrawal": "Sahaj stops sending new application details. Data already sent must be handled with the provider."},

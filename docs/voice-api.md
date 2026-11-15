@@ -18,7 +18,7 @@ This protocol lets a client use voice activity detection and keep the microphone
 
 ## Talking to a person (customer executive desk)
 
-Some conversations need a person: when the customer asks, when they complain or are in distress, when Sahaj keeps failing or keeps having to ask what they mean, and for video KYC (RBI requires a person to conduct it). Each becomes a **case** on the executive desk, carrying the masked conversation so far.
+Some conversations need a person: when the customer asks, when they complain or are in distress, when Sahaj keeps failing or keeps having to ask what they mean, and to arrange video KYC. The request becomes a **case** on the executive desk, carrying the masked conversation so far. For V-CIP, the authorised official of the regulated entity conducts the live identity check; Sahaj's current implementation schedules an appointment but does not conduct or verify the session.
 
 **Customer side, on the socket**
 - `{"type":"handoff"}` (the "talk to a person" button), or with `"reason":"video_kyc"|"callback"|"complaint"` and an optional `"note"`. Video KYC needs the `video_kyc` consent first (otherwise you get `consent_required`).
@@ -28,7 +28,7 @@ Some conversations need a person: when the customer asks, when they complain or 
 - The `session` event's `case` field is the open case, if any, so a reconnecting customer goes straight back to their executive.
 - Escalation is automatic for complaints (priority high) and distress (urgent): Sahaj acknowledges in one fixed sentence and hands over at once.
 
-**Customer side, over REST:** `GET /cases` (their cases, and the thread of the open one, so replies sent while they were away are shown), `POST /cases` (`{"kind":"video_kyc"|"callback"|"complaint"|"help","note"}`), `POST /cases/{id}/messages`, `POST /cases/{id}/cancel`. A person has at most one open case; asking again adds to it, and a more serious reason raises its priority.
+**Customer side, over REST:** after `PUT /consents/video_kyc` with the version shown by `GET /consents`, call `POST /cases` (`{"kind":"video_kyc"|"callback"|"complaint"|"help","note"}`). Also: `GET /cases` (their cases and the active thread), `POST /cases/{id}/messages`, `POST /cases/{id}/cancel`. A person has at most one open case; asking again adds to it, and a more serious reason raises its priority.
 
 **Executives** (role `executive`, granted by an admin with `PATCH /admin/users/{id}/role`):
 - `WS /ws/desk?access_token=…`: a `queue` snapshot, then `case_opened`, `case_updated`, `customer_message`, `case_claimed`, `case_released`, `case_closed`.
@@ -92,20 +92,36 @@ Sahaj signs people in with Google and then uses its own JWTs. `/ws/voice`, `/use
 Signed-in users can store documents (a loan offer, a policy). Files are private: they sit in a private Amazon S3 bucket, there are no shareable links, and only the owner can download them through the API.
 
 1. `GET /files` returns the user's files, the `limits` and `consent_text`. Show the text verbatim, then `PUT /files/consent` with `{"granted": true}`. Uploads return `403` until then.
-2. `POST /files` (multipart field `file`) stores one PDF, PNG, JPEG or WebP, up to 8 MB, at most 50 per person. The type is decided by the file's contents, not its name or declared type (`415` otherwise; `413` too large; `409` at the file limit; `503` if storage is not set up). The response is the file record.
+2. `POST /files` (multipart field `file`) stores one PDF, PNG, JPEG, WebP, GIF, DOCX, XLSX, PPTX, UTF-8 text or supported audio file, up to `limits.max_bytes`, at most `limits.max_files` per person. The type is decided by the file's contents, not its name or declared type (`415` otherwise; `413` too large; `409` at the file limit; `503` if storage is not set up). The response is the file record.
 3. `GET /files/{id}` downloads it (as an attachment), `DELETE /files/{id}` removes it (204). Another person's id is a `404`.
 4. Withdrawing consent (`granted: false`) or deleting the account **deletes every stored file**.
 
 ### Asking questions about your own documents
 
-A second consent, `document_analysis`, lets Sahaj read uploaded **PDFs and photos** (PNG, JPEG) so questions can be asked about them. PDFs with a text layer are read on our servers; scanned PDFs and photos are read by **Sarvam's Document AI (OCR)**, up to 30 pages per document. WebP and GIF images are stored but not read.
+A second consent, `document_analysis`, lets Sahaj read uploaded PDFs, photos (PNG, JPEG), DOCX, XLSX, PPTX and UTF-8 text so questions can be asked about them. PDFs with a text layer and office/text files are parsed locally; scanned PDFs and photos are read by Sarvam OCR, up to `DOC_MAX_PAGES` pages, slides or sheets. WebP, GIF and audio files can be stored but are not indexed for document questions.
 
 1. `GET /files` returns `analysis_consent` and `analysis_consent_text`. Show the text verbatim, then `PUT /files/analysis/consent` with `{"granted": true}` (needs the `documents` consent first). That reads the PDFs already stored; new uploads are read straight away.
 2. Each file's `index_status` goes `indexing` then `ready` (or `empty`, `unsupported`, `over_budget` when the person's monthly limit is used up, or `failed`). Poll `GET /files` until it is `ready`. OCR pages and embeddings are charged to the person (`by_kind.ocr`, `by_channel.documents` in `/users/me/usage`).
 3. Then just ask in chat, for example *"What is the prepayment charge in my offer?"* or *"What is the total on my hospital bill?"*. Answers cite the person's own passages as `mydoc-<id>:p<page>.<n>`, and `structured.sources[].text` begins with the file name and page. Identifiers such as PAN, Aadhaar, phone and account numbers are masked **before** a passage is stored or shown to the AI model (Sarvam's OCR, which reads the image, sees the page as it is: the consent text says so).
 4. Withdrawing `document_analysis` forgets everything learned (the files stay). Withdrawing `documents` or deleting the account removes it all. Replies that used a person's documents are never cached or shared.
 
+`GET /files` is the signed-in person's inventory. It returns only their records, and `GET /files/{id}` streams an owner-checked file; another person's file ID returns `404`. Files live in private S3 storage with owner-specific prefixes and are never exposed through public or presigned URLs. SDK methods are `files()`, `uploadFile()`, `downloadFile()` and `deleteFile()`.
+
 Sahaj does not virus-scan uploaded files.
+
+## Calculators and financial actions
+
+- `POST /calculators/emi` accepts `principal`, `annual_rate_percent` and `tenure_months`; `POST /calculators/prepayment` adds `prepay_amount` and optional `mode` (`reduce_tenure` or `reduce_emi`). Both require sign-in, return deterministic calculations with a reducing-balance disclosure, and reject out-of-range inputs. They are estimates, not lender quotes.
+- `GET /financial/providers` lists installed credit-bureau, lender and insurer adapters. `POST /financial/credit-check` requests an actual provider credit check after the person sees and grants the versioned `credit_bureau` consent and confirms the selected provider. It does not derive a CIBIL score from a formula. With no authorised adapter configured it returns `503 provider_unavailable`.
+- `POST /financial/loan/offers` requires a recent credit check from the same provider plus `financial_application` consent. The person reviews the lender's offer and Key Facts Statement (KFS), then `POST /financial/loan/apply` submits only after explicit KFS acceptance and final confirmation. A lender makes the decision.
+- `POST /financial/insurance/quotes` gets insurer quotes. The person reviews actual policy terms, then `POST /financial/insurance/purchase` submits the selected quote and accepted terms version after confirmation. Payment and issuance remain with the insurer/provider checkout flow.
+- `GET /financial/events` returns only the signed-in person's provider references and statuses. SDK methods include `checkCredit()`, `loanOffers()`, `applyForLoan()`, `insuranceQuotes()`, `purchaseInsurance()` and `financialEvents()`.
+
+There are plugin points, not production financial partners in this checkout. These calls fail closed until an authorised adapter is installed; Sahaj does not invent scores, offers, approvals, quotes or policies.
+
+## Web research
+
+`POST /search/web` (`{ "query": "...", "domain": "insurance"|"loan" }`) runs an India-focused Firecrawl search and returns the result title, URL, excerpt, page content and usage. `/search/insurance` remains as the insurance-only alias. The assistant can use web research when approved local documents do not answer a public market-information question; those responses carry `web:*` citations. A search result is research evidence, not an insurer/lender offer or a personalised approval decision.
 
 ## Memory
 
@@ -215,7 +231,7 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 | `card` | `kind`, `card`, `trace_id` | Structured data to render as UI, sent just before the matching `assistant` message. See "Cards" below. Always trust the card over the spoken text for figures. |
 | `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets what that purpose allowed it to hold (one event per purpose withdrawn, including dependents). |
 | `user` | `text` | The transcript as a user message. **Personal identifiers are already masked** (for example `[PAN_1]`, `[PHONE_1]`). Show it as is. |
-| `assistant` | `agent`, `text`, `citations`, `trace_id` | The answer. `agent` is `insurance`, `loan` or `general`. `text` contains source tags like `[policy:3.2]`. Render each tag as a link or footnote to the matching entry in `citations`, which holds the clause text. Keep `trace_id` for support. |
+| `assistant` | `agent`, `text`, `citations`, `structured`, `trace_id` | The answer. `structured.points[].sources` contains source IDs for each claim and `structured.sources[]` maps those IDs to source text. The top-level `citations` field contains the same source entries. Render source tags from structured points against `structured.sources`; keep `trace_id` for support. |
 | *(binary)* | | MP3 chunks of the spoken answer. Join them in order. |
 | `done` | none | The turn is finished. If you received no audio chunks, play nothing. Some languages are text only. |
 | `handoff` | `reference`, `reason` | A human is taking over. Show the `reference` to the user and disable the talk button. The AI stops answering on this session. `reason` is `user_requested`, `guardrail_failures` (two answers in a row could not be verified) or `stuck_in_questions` (three turns of the needs analysis made no progress). |

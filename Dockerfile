@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image: FastAPI serves the API, the voice WebSocket and the built PWA from the same origin.
-#   docker build -t sahaj .                       (bakes the 2.2 GB embedding model in: fast, offline cold starts)
-#   docker build -t sahaj --build-arg BAKE_MODEL=false .   (smaller image; downloads the model on first start)
+#   docker build -t sahaj .
+# Embeddings come from OpenAI (OPENAI_API_KEY), so no model is downloaded or baked in.
 
 # ---------- web: build the PWA ----------
 FROM node:22-slim AS web
@@ -26,20 +26,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /usr/local/bin/uv
 COPY apps/api/requirements.lock .
 RUN uv pip install --system --no-cache -r requirements.lock
 
-ARG BAKE_MODEL=true
-ARG EMBED_MODEL=intfloat/multilingual-e5-large
-# HF_HOME: the downloader's own cache must be writable by the runtime user, not under a missing home dir
-ENV EMBED_MODEL=${EMBED_MODEL} EMBED_CACHE_DIR=/models HF_HOME=/models/.hf
-RUN mkdir -p /models && if [ "$BAKE_MODEL" = "true" ]; then \
-      python -c "from fastembed import TextEmbedding; TextEmbedding('${EMBED_MODEL}', cache_dir='/models')"; \
-    fi
-
 COPY apps/api/ .
 COPY --from=web /repo/apps/web/dist /app/web
 
 # The audit ledger is SQLite for now: mount a persistent volume at /data or it is lost on every restart.
 ENV WEB_DIST=/app/web LEDGER_DB=/data/ledger.db
-RUN useradd --system --create-home --uid 1001 sahaj && mkdir -p /data && chown -R sahaj /data /models /app
+RUN useradd --system --create-home --uid 1001 sahaj && mkdir -p /data && chown -R sahaj /data /app
 USER sahaj
 
 EXPOSE 8000

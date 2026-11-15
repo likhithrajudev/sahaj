@@ -138,7 +138,7 @@ function Row({ icon, iconClass, onClick, children }: { icon: string; iconClass?:
 export function WithdrawDialog() {
   const t = useT();
   const purpose = useUi((s) => s.confirmWithdraw);
-  const conversation = purpose === "conversation";
+  const conversation = purpose === "conversation"; // other purposes are managed elsewhere (memory, documents)
   const close = () => useUi.setState({ confirmWithdraw: null });
   if (!purpose) return null;
   return (

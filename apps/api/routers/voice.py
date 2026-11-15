@@ -1,16 +1,26 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from auth.deps import websocket_user
+from gateway.middleware import client_ip
+from observability import metrics
 from orchestrator.session import Session
 
 router = APIRouter(tags=["Voice"])
 
+UNAUTHORIZED = 4401  # WebSocket close code: the access token is missing, invalid or expired
+
 
 @router.websocket("/ws/voice")
 async def voice(ws: WebSocket):
+    """Needs an access token: `Authorization: Bearer <token>` or `?access_token=<token>`."""
+    user = await websocket_user(ws)
     await ws.accept()
-    session = Session(ws)
-    await session.start()
+    if user is None:
+        return await ws.close(code=UNAUTHORIZED, reason="Sign in first.")
+    session = Session(ws, user, client_ip(ws.scope))
+    metrics.WS_CONNECTIONS.inc()
     try:
+        await session.start()
         while True:
             msg = await ws.receive()
             if msg["type"] == "websocket.disconnect":
@@ -21,3 +31,6 @@ async def voice(ws: WebSocket):
                 await session.on_control(msg["text"])
     except WebSocketDisconnect:
         pass
+    finally:
+        metrics.WS_CONNECTIONS.dec()
+        await session.close()

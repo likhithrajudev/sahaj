@@ -17,7 +17,7 @@ interface UiState {
   /** Desktop side panel: which card is open (null = latest). */
   panelItemId: string | null;
   panelOpen: boolean;
-  confirmWithdraw: null | "conversation" | "needs_analysis";
+  confirmWithdraw: null | import("@sahaj/contracts").ConsentPurpose;
   /** Android/desktop Chrome: the inline "Add Sahaj to your home screen" card in the conversation. */
   installCard: boolean;
 }

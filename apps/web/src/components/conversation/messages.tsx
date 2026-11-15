@@ -142,14 +142,14 @@ export function ListeningBubble() {
   );
 }
 
-const STEP_ORDER = ["understanding", "searching", "comparing", "calculating", "thinking", "checking"] as const;
+const STEP_ORDER = ["transcribing", "thinking", "searching", "comparing", "calculating", "checking"] as const;
 
 /** While Sahaj works on the reply: the steps the server reported, the current one spinning. */
 export function ThinkingBubble() {
   const t = useT();
   const history = useSession((s) => s.statusHistory);
   const sending = useSession((s) => s.turn === "sending");
-  const steps = history.filter((s) => STEP_ORDER.includes(s));
+  const steps = history.filter((s) => (STEP_ORDER as readonly string[]).includes(s));
   return (
     <div className="flex w-fit min-w-[220px] max-w-[80%] flex-col gap-2 rounded-[20px] border border-line bg-surface px-4 py-3.5" aria-live="polite">
       <div className="flex gap-1.5" aria-hidden>

@@ -30,9 +30,21 @@ CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
 """
 
 
+async def vector_dim(conn, table: str) -> Optional[int]:
+    """The dimension of `table`.embedding, or None if the table does not exist."""
+    row = await (await conn.execute(
+        "SELECT a.atttypmod FROM pg_attribute a WHERE a.attrelid = to_regclass(%s) AND a.attname = 'embedding'", (table,))).fetchone()
+    return row[0] if row else None
+
+
 async def init_schema() -> None:
     async with await psycopg.AsyncConnection.connect(config.DATABASE_URL, autocommit=True) as conn:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        for table in ("knowledge_chunks", "embedding_cache"):
+            dim = await vector_dim(conn, table)
+            if dim is not None and dim != config.EMBED_DIM:   # embeddings from another model: rebuilt from knowledge/
+                log.warning("%s holds %s-dimension embeddings; EMBED_DIM is %s. Rebuilding it.", table, dim, config.EMBED_DIM)
+                await conn.execute(f"DROP TABLE {table}")   # table name is one of the two literals above
         await conn.execute(SCHEMA)
 
 
@@ -113,3 +125,11 @@ async def search(domain: str, vector: List[float], k: int, doc_ids: Optional[Lis
             {"key": key, "text": text, "sha256": sha, "similarity": float(sim)}
             for key, text, sha, sim in await cur.fetchall()
         ]
+
+
+async def stats() -> dict:
+    """What the knowledge base holds: {"clauses": n, "domains": {domain: n}}. Raises RuntimeError if there is no database."""
+    async with pool().connection() as conn:
+        cur = await conn.execute("SELECT domain, count(*) FROM knowledge_chunks GROUP BY domain ORDER BY domain")
+        domains = {d: n for d, n in await cur.fetchall()}
+    return {"clauses": sum(domains.values()), "domains": domains}

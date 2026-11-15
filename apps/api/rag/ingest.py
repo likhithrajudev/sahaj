@@ -11,8 +11,10 @@ from rag.embeddings import embed_passages
 LONG_CLAUSE = 1800  # characters; the embedding model reads about 512 tokens and truncates the rest
 
 
-async def main() -> None:
-    await store.open_pool()
+async def sync_all() -> dict:
+    """Bring the database in line with knowledge/: embed new or changed clauses, delete removed ones. The pool must be
+    open. Returns {domain: clauses}."""
+    summary = {}
     for domain in loader.domains():
         chunks = loader.load_chunks(domain)
         have = await store.existing(domain)
@@ -29,7 +31,16 @@ async def main() -> None:
         keep = [f"{c['doc_id']}:{c['clause']}" for c in chunks]
         await store.sync(domain, todo, keep)
         print(f"{domain}: {len(chunks)} clauses ({len(todo)} embedded, {len(have) - len(set(have) & set(keep))} removed)")
-    await store.close_pool()
+        summary[domain] = len(chunks)
+    return summary
+
+
+async def main() -> None:
+    await store.open_pool()
+    try:
+        await sync_all()
+    finally:
+        await store.close_pool()
 
 
 if __name__ == "__main__":

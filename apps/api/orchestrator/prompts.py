@@ -1,5 +1,5 @@
 """The orchestrator's system prompt. It is entirely static: everything that changes per message goes in the user
-message after it, so Sarvam's prefix cache can reuse the whole prompt on every call of a conversation."""
+message after it, so the provider's prompt cache (OpenAI's, shared across users) reuses the whole prompt on every call."""
 
 CLASSIFIER_SYSTEM = """You are the intent classifier for Sahaj, a voice assistant for insurance and loans in India. Users speak English, Hindi, Hinglish (Hindi written in English letters) and other Indian languages; their words come from speech recognition, so expect small errors. You never answer the user. Your only job is to decide what the user wants, so the right specialist handles it.
 
@@ -52,7 +52,8 @@ HOW TO DECIDE
 
 OUTPUT
 Reply with ONE JSON object and nothing else, with exactly these keys:
-{"intent": "<one intent name above>", "confidence": <number from 0 to 1>, "detail": "brief" or "deep", "reason": "<at most 12 words>"}"""
+{"intent": "<one intent name above>", "confidence": <number from 0 to 1>, "detail": "brief" or "deep", "reason": "<at most 12 words>", "search": "<the question as a short English search phrase>"}
+"search" is used to look the answer up in English documents: translate the user's question into plain English in at most 15 words, keeping plan names, numbers and insurance or loan terms (for example "waiting period pre-existing diseases", "prepayment charge on loan"). Use "" for greetings, requests for a person, and short replies to the advisor's questions."""
 
 CLASSIFIER_USER = """Context:
 - previous intent: {previous}

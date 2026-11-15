@@ -6,7 +6,7 @@ import type {
   ConsentRequiredEvent,
   HandoffReason,
   ReplyKind,
-  StatusStep,
+  Stage,
 } from "@sahaj/contracts";
 import { create } from "zustand";
 import type { MicError } from "@/lib/audio/recorder";
@@ -54,8 +54,8 @@ export interface SessionState {
   declined: boolean;
   turn: TurnState;
   /** Latest server status step while thinking. */
-  status: StatusStep | null;
-  statusHistory: StatusStep[];
+  status: Stage | null;
+  statusHistory: Stage[];
   recordingSince: number | null;
   /** Mic input level 0..1 while recording, for the bars. */
   level: number;
@@ -76,7 +76,10 @@ export interface SessionState {
 export const initialSession: SessionState = {
   connection: "connecting",
   sessionId: null,
-  consent: { conversation: { state: "unknown" }, needs_analysis: { state: "unknown" } },
+  consent: {
+    conversation: { state: "unknown" }, needs_analysis: { state: "unknown" }, memory: { state: "unknown" },
+    documents: { state: "unknown" }, document_analysis: { state: "unknown" },
+  },
   consentPrompt: null,
   declined: false,
   turn: "idle",

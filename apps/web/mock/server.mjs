@@ -7,8 +7,8 @@ import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT ?? 8000);
 const CONSENT = {
-  conversation: { version: "2026-11-draft-1", text: "Sahaj will process your voice and the information you share in this conversation to answer your questions about insurance and loans. Personal identifiers such as PAN, Aadhaar and phone numbers are masked before anything is processed. A record of this conversation is kept for audit, as regulation requires. Your audio is not kept after your answer is ready. You can withdraw consent at any time from the menu, and Sahaj will stop processing straight away. Sahaj gives information, not financial advice." },
-  needs_analysis: { version: "2026-11-draft-1", text: "To suggest plans that fit you, Sahaj will ask about and use your age, yearly income, city, family members, existing cover and health conditions. These details are used only in this conversation, are masked in audit records where possible, and are not shared with insurers. You can withdraw this permission at any time." },
+  conversation: { title: "Before we start", required: true, requires: null, withdrawal: "Sahaj stops listening and forgets this conversation.", version: "2026-11-draft-1", text: "Sahaj will process your voice and the information you share in this conversation to answer your questions about insurance and loans. Personal identifiers such as PAN, Aadhaar and phone numbers are masked before anything is processed. A record of this conversation is kept for audit, as regulation requires. Your audio is not kept after your answer is ready. You can withdraw consent at any time from the menu, and Sahaj will stop processing straight away. Sahaj gives information, not financial advice." },
+  needs_analysis: { title: "Can I use your details?", required: false, requires: "conversation", withdrawal: "Sahaj forgets the details you gave for plan suggestions.", version: "2026-11-draft-1", text: "To suggest plans that fit you, Sahaj will ask about and use your age, yearly income, city, family members, existing cover and health conditions. These details are used only in this conversation, are masked in audit records where possible, and are not shared with insurers. You can withdraw this permission at any time." },
 };
 
 const clause = (doc, docName, num, title, body) =>
@@ -21,19 +21,19 @@ const plan = (rank, id, name, insurer, premium, meets, highlights, reasons, crit
 const crit = (score, weight) => ({ value: score, score, weight, contribution: +(score * weight).toFixed(4) });
 
 const script = [
-  { user: "What would the EMI be on 5 lakh at 11% for 3 years?", agent: "loan", kind: "calc", steps: ["understanding", "calculating", "checking"],
+  { user: "What would the EMI be on 5 lakh at 11% for 3 years?", agent: "loan", kind: "calc", steps: ["thinking", "calculating", "checking"],
     card: { type: "loan_calculation", kind: "emi", inputs: { principal: 500000, annual_rate_percent: 11, tenure_months: 36 }, result: { emi: 16369, total_payment: 589291, total_interest: 89291 } },
     text: "Your EMI would be about ₹16,369 a month. Over 3 years you would pay ₹89,291 in interest [calc:emi].",
     citations: [fact("calc:emi", "Loan calculation", "For a loan of ₹5,00,000 at 11 percent a year over 36 months: the monthly instalment (EMI) is ₹16,369, the total repayment is ₹5,89,291 and the total interest is ₹89,291. This uses the reducing-balance method; a lender's own figure can differ slightly.")] },
 
-  { user: "What is the waiting period for pre-existing diseases in Lotus Care? My PAN is [PAN_1]", agent: "insurance", steps: ["understanding", "searching", "checking"],
+  { user: "What is the waiting period for pre-existing diseases in Lotus Care? My PAN is [PAN_1]", agent: "insurance", steps: ["thinking", "searching", "checking"],
     text: "Lotus Care covers pre-existing diseases only after 36 months of continuous cover [health-lotus-care:3.2]. Some listed conditions, like cataract, have a 24-month wait [health-lotus-care:3.4].",
     citations: [
       clause("health-lotus-care", LOTUS, "3.2", "Pre-existing disease waiting period", "Expenses for the treatment of a pre-existing disease and its direct complications are excluded until 36 months of continuous coverage have passed since the start of the first policy with the insurer. If the sum insured is increased, this exclusion applies again to the increase."),
       clause("health-lotus-care", LOTUS, "3.4", "Specified disease waiting period", "Expenses for the listed conditions, including cataract, hernia and joint replacement, are excluded until 24 months of continuous coverage have passed, unless they arise from an accident."),
     ] },
 
-  { user: "Compare the Lotus, Neem and Peepal health plans", agent: "insurance", kind: "compare", steps: ["understanding", "comparing", "checking"],
+  { user: "Compare the Lotus, Neem and Peepal health plans", agent: "insurance", kind: "compare", steps: ["thinking", "comparing", "checking"],
     card: { type: "comparison", goal: "health", sample_data: true, premiums_included: true, plans: [
       { id: "health-lotus-care", name: "Lotus Care (SAMPLE)", insurer: "Kaveri General (SAMPLE)", rows: [["pre-existing disease wait", "3 years"], ["initial wait", "30 days"], ["co-payment", "none"], ["room rent", "single private room"], ["maternity", "not covered"], ["restoration of sum insured", "yes, once a year"], ["no-claim bonus", "10% a year, up to 50%"], ["network hospitals", "7,200"], ["claim settlement ratio", "96.2 percent (sample data)"], ["indicative yearly premium", "Rs 21,400"]] },
       { id: "health-neem-essential", name: "Neem Essential (SAMPLE)", insurer: "Godavari Assurance (SAMPLE)", rows: [["pre-existing disease wait", "4 years"], ["initial wait", "30 days"], ["co-payment", "20%"], ["room rent", "1% of cover a day"], ["maternity", "not covered"], ["restoration of sum insured", "no"], ["no-claim bonus", "5% a year, up to 25%"], ["network hospitals", "5,400"], ["claim settlement ratio", "93.8 percent (sample data)"], ["indicative yearly premium", "Rs 18,900"]] },
@@ -42,22 +42,22 @@ const script = [
     text: "Peepal Family has the shortest wait for pre-existing diseases and is the only one with maternity cover [health-peepal-family:compare]. Neem Essential has the lowest premium but a 20% co-payment [health-neem-essential:compare].",
     citations: [fact("health-peepal-family:compare", "Peepal Family (SAMPLE)", "Peepal Family (SAMPLE): pre-existing disease wait 2 years; maternity covered up to ₹50,000 after 24 months."), fact("health-neem-essential:compare", "Neem Essential (SAMPLE)", "Neem Essential (SAMPLE): co-payment 20%; indicative yearly premium ₹18,900.")] },
 
-  { user: "If I prepay 1 lakh now, how much do I save?", agent: "loan", kind: "calc", steps: ["understanding", "calculating", "checking"],
+  { user: "If I prepay 1 lakh now, how much do I save?", agent: "loan", kind: "calc", steps: ["thinking", "calculating", "checking"],
     card: { type: "loan_calculation", kind: "prepayment", inputs: { principal: 400000, annual_rate_percent: 11, tenure_months: 28, prepay_amount: 100000, mode: "reduce_tenure" },
       result: { emi_before: 16262, emi_after: 16262, months_before: 28, months_after: 21, months_saved: 7, interest_before: 55336, interest_after: 30144, interest_saved: 25192 } },
     text: "Paying ₹1,00,000 now saves about ₹25,192 in interest and ends the loan 7 months sooner, with the same EMI [calc:prepay].",
     citations: [fact("calc:prepay", "Loan calculation", "Same EMI, shorter loan: interest goes from ₹55,336 to ₹30,144, a saving of ₹25,192. A lender's own figure can differ slightly.")] },
 
-  { user: "Tell me about the Orchid plan", agent: "insurance", kind: "ask", steps: ["understanding"],
+  { user: "Tell me about the Orchid plan", agent: "insurance", kind: "ask", steps: ["thinking"],
     text: "There are two Orchid plans: Orchid Pure, a term life plan, and Orchid Legacy, a whole life plan. Which one do you mean?", citations: [] },
 
-  { user: "Orchid Legacy. Does it pay out if I move abroad?", agent: "insurance", fallback: true, steps: ["understanding", "searching", "checking"],
+  { user: "Orchid Legacy. Does it pay out if I move abroad?", agent: "insurance", fallback: true, steps: ["thinking", "searching", "checking"],
     text: "I can't confirm that from the documents I have. Would you like me to connect you to a person?", citations: [] },
 
-  { user: "ای ایم آئی کیا ہوتی ہے؟", agent: "loan", textOnly: true, steps: ["understanding", "searching", "checking"],
+  { user: "ای ایم آئی کیا ہوتی ہے؟", agent: "loan", textOnly: true, steps: ["thinking", "searching", "checking"],
     text: "ای ایم آئی وہ مقررہ رقم ہے جو آپ ہر مہینے قرض واپس کرنے کے لیے ادا کرتے ہیں۔", citations: [] },
 
-  { user: "Which health insurance should I buy for my family?", agent: "advice", kind: "ask", consent: "needs_analysis", steps: ["understanding"],
+  { user: "Which health insurance should I buy for my family?", agent: "advice", kind: "ask", consent: "needs_analysis", steps: ["thinking"],
     text: "I can suggest plans, but first I need your permission to use a few personal details.", citations: [],
     afterConsent: { agent: "advice", kind: "ask", progress: { step: 2, total: 9 }, text: "Thank you. Could you tell me the age of the eldest person who will be covered?", citations: [] } },
 
@@ -105,13 +105,15 @@ wss.on("connection", (ws) => {
   const id = "ses_" + Math.random().toString(36).slice(2, 6).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
   const consent = { conversation: false, needs_analysis: false };
   let step = 0, handoff = null, pending = null, failures = 0;
-  send({ type: "session", id });
+  // The real server needs a signed-in user (Authorization / ?access_token); the mock accepts anyone as a demo user.
+  send({ type: "session", id, memory: false, case: null,
+    user: { id: "mock-user", email: "demo@example.com", name: "Demo", picture: null, language: "en-IN", platform: "web", role: "user" } });
   send({ type: "consent_required", purpose: "conversation", ...CONSENT.conversation });
 
   const reply = async (s) => {
     const trace_id = Math.random().toString(36).slice(2);
     for (const st of s.steps ?? ["thinking"]) {
-      send({ type: "status", step: st });
+      send({ type: "status", stage: st });
       await sleep(700);
     }
     if (s.card) send({ type: "card", kind: s.kind, card: s.card, trace_id });

@@ -113,7 +113,7 @@ const S = {
   notSent: ["not sent", "नहीं भेजा"],
 
   // thinking steps (status events)
-  step_understanding: ["Understanding your question…", "आपका सवाल समझ रहे हैं…"],
+  step_transcribing: ["Listening to what you said…", "आपकी बात सुन रहे हैं…"],
   step_searching: ["Finding the right documents…", "सही दस्तावेज़ ढूँढ रहे हैं…"],
   step_comparing: ["Comparing the plans…", "प्लान की तुलना कर रहे हैं…"],
   step_calculating: ["Working out the numbers…", "गणना कर रहे हैं…"],

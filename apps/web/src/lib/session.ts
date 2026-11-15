@@ -112,10 +112,11 @@ function handleEvent(e: ServerEvent) {
       break;
 
     case "status":
+      if (e.stage === "speaking" || e.stage === "speech_unavailable" || e.stage === "waiting_for_executive") break;
       set((s) => ({
-        status: e.step,
-        statusHistory: s.statusHistory.includes(e.step) ? s.statusHistory : [...s.statusHistory, e.step],
-        turn: s.turn === "sending" ? "thinking" : s.turn,
+        status: e.stage,
+        statusHistory: s.statusHistory.includes(e.stage) ? s.statusHistory : [...s.statusHistory, e.stage],
+        turn: s.turn === "sending" && e.stage !== "transcribing" ? "thinking" : s.turn,
       }));
       break;
 

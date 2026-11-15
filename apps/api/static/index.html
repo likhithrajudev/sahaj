@@ -1,45 +1,379 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Sahaj</title>
-<button id="talk">Hold to talk</button>
-<button id="human">Talk to a human</button>
-<pre id="log"></pre>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahaj test console</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b1f24; --mute:#667085; --line:#e4e7ec; --brand:#0b6e4f; --brand-2:#e7f5ef;
+          --warn:#b54708; --warn-bg:#fffaeb; --bad:#b42318; --bad-bg:#fef3f2; --info:#175cd3; --info-bg:#eff8ff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1316; --card:#171c21; --ink:#e8ecf0; --mute:#98a2b3; --line:#2a323a; --brand:#3ec28f; --brand-2:#12302a;
+            --warn:#f5a524; --warn-bg:#2e2410; --bad:#f97066; --bad-bg:#2d1513; --info:#84caff; --info-bg:#102a43; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  .pill { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--mute); }
+  .pill.ok { color:var(--brand); border-color:var(--brand); background:var(--brand-2); }
+  .pill.bad { color:var(--bad); border-color:var(--bad); background:var(--bad-bg); }
+  .spacer { flex:1; }
+  main { max-width:980px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  h2 { font-size:14px; margin:0 0 10px; }
+  nav { display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-4px -4px 14px; flex-wrap:wrap; }
+  nav button { border:0; background:none; padding:8px 12px; color:var(--mute); cursor:pointer; font:inherit; border-bottom:2px solid transparent; }
+  nav button[aria-selected=true] { color:var(--ink); border-color:var(--brand); font-weight:600; }
+  button, input, select { font:inherit; color:inherit; }
+  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); cursor:pointer; }
+  .btn:hover { border-color:var(--brand); }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.danger { color:var(--bad); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  input[type=text], input[type=email], select { padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); min-width:0; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; }
+  .mute { color:var(--mute); } .small { font-size:12px; }
+  #log { height:420px; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:4px; background:var(--bg); border-radius:10px; border:1px solid var(--line); }
+  .msg { max-width:88%; padding:9px 12px; border-radius:12px; border:1px solid var(--line); background:var(--card); }
+  .msg.me { align-self:flex-end; background:var(--brand-2); border-color:transparent; }
+  .msg.sys { align-self:center; max-width:100%; font-size:12px; color:var(--mute); border:0; background:none; padding:2px; }
+  .msg.err { align-self:center; color:var(--bad); background:var(--bad-bg); border-color:transparent; }
+  .msg.ask { align-self:center; max-width:95%; background:var(--info-bg); border-color:transparent; }
+  .badge { display:inline-flex; gap:4px; align-items:center; font-size:11px; padding:1px 8px; border-radius:99px; margin-bottom:6px; }
+  .badge.verified { background:var(--brand-2); color:var(--brand); } .badge.engine { background:var(--info-bg); color:var(--info); }
+  .badge.checked { background:var(--warn-bg); color:var(--warn); } .badge.blocked { background:var(--bad-bg); color:var(--bad); }
+  .headline { font-weight:600; margin-bottom:4px; }
+  ul.points { margin:4px 0 6px; padding-left:18px; } ul.points li { margin:3px 0; }
+  .chip { display:inline-block; font-size:11px; padding:0 6px; margin-left:4px; border-radius:6px; background:var(--info-bg); color:var(--info); cursor:pointer; border:0; }
+  .src { font-size:12px; color:var(--mute); border-left:3px solid var(--line); padding:2px 8px; margin:4px 0; white-space:pre-wrap; }
+  .sugg { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .sugg button { border:1px solid var(--line); background:var(--bg); border-radius:99px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .sugg button:hover { border-color:var(--brand); }
+  .rate button { border:0; background:none; cursor:pointer; font-size:15px; opacity:.55; } .rate button:hover, .rate button.on { opacity:1; }
+  details summary { cursor:pointer; color:var(--mute); font-size:12px; }
+  pre { background:var(--bg); padding:8px; border-radius:8px; overflow:auto; font-size:12px; margin:6px 0 0; }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; }
+  .status-line { height:18px; font-size:12px; color:var(--mute); }
+  .hidden { display:none !important; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media (max-width:700px){ .two{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sahaj test console</h1>
+  <span id="ready" class="pill">checking…</span>
+  <span id="kb" class="pill">knowledge base</span>
+  <span class="spacer"></span>
+  <span id="who" class="mute small"></span>
+  <button id="signout" class="btn hidden">Sign out</button>
+</header>
 
-<script type="module">
-  const log = (t) => (document.getElementById("log").textContent += t + "\n");
-  const ws = new WebSocket(`ws://${location.host}/ws/voice`);
-  const send = (obj) => ws.send(JSON.stringify(obj));
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  let chunks = [], parts = [], rec;
+<main>
+  <section id="auth" class="card">
+    <h2>Sign in</h2>
+    <div id="devbox" class="row hidden">
+      <input id="devemail" type="email" value="tester@example.com" placeholder="any email">
+      <button id="devgo" class="btn primary">Dev sign-in</button>
+      <span class="mute small">Local development only (DEV_LOGIN=true). Same account each time for the same email.</span>
+    </div>
+    <div id="googlebox" class="hidden" style="margin-top:8px"><div id="gbtn"></div></div>
+    <div id="noauth" class="mute small hidden">No sign-in is configured. In <code>.env.local</code> set <code>DEV_LOGIN=true</code>, or <code>GOOGLE_CLIENT_IDS</code>, and restart.</div>
+    <div id="autherr" class="small" style="color:var(--bad)"></div>
+  </section>
 
-  ws.onmessage = ({ data }) => {
-    if (data instanceof Blob) return chunks.push(data);
-    const m = JSON.parse(data);
-    if (m.type === "consent_required") {
-      send({ type: "consent", purpose: m.purpose, granted: confirm(m.text) });
-    }
-    if (m.type === "user") log("You: " + m.text);
-    if (m.type === "assistant") {
-      log(`Sahaj (${m.agent}): ${m.text}`);
-      m.citations.forEach((c) => log(`   [${c.id}] ${c.text}`));
-    }
-    if (m.type === "handoff") log(`>> Handed to a human. Reference ${m.reference}`);
-    if (m.type === "error") log("! " + m.message);
-    if (m.type === "done" && chunks.length) {  // no chunks = text-only reply
-      new Audio(URL.createObjectURL(new Blob(chunks, { type: "audio/mpeg" }))).play();
-    }
-    if (m.type === "done" || m.type === "error") chunks = [];
+  <section id="app" class="card hidden">
+    <nav role="tablist">
+      <button data-tab="chat" aria-selected="true">Chat</button>
+      <button data-tab="memory" aria-selected="false">Memory</button>
+      <button data-tab="files" aria-selected="false">Files</button>
+      <button data-tab="system" aria-selected="false">Account &amp; system</button>
+    </nav>
+
+    <!-- CHAT -->
+    <div id="tab-chat">
+      <div class="row" style="margin-bottom:8px">
+        <label class="small mute">Transport
+          <select id="transport"><option value="ws">WebSocket</option><option value="sse">HTTP (SSE)</option></select></label>
+        <label class="small mute">Language
+          <select id="lang"><option value="en-IN">English</option><option value="hi-IN">हिन्दी</option><option value="ta-IN">தமிழ்</option><option value="te-IN">తెలుగు</option><option value="bn-IN">বাংলা</option></select></label>
+        <label class="small"><input id="speak" type="checkbox"> speak replies</label>
+        <span class="spacer"></span>
+        <button id="newchat" class="btn small">New conversation</button>
+        <button id="human" class="btn small">Talk to a human</button>
+      </div>
+      <div id="log" aria-live="polite"></div>
+      <div id="stage" class="status-line"></div>
+      <form id="form" class="row">
+        <input id="text" class="grow" type="text" placeholder="Ask about insurance or a loan…" autocomplete="off" maxlength="2000">
+        <button class="btn primary" id="send">Send</button>
+        <button type="button" class="btn" id="mic" title="Hold to talk (WebSocket only)">🎤 Hold</button>
+      </form>
+      <div class="small mute" style="margin-top:8px">Try: “What is the waiting period for pre-existing conditions?”, “Which health insurance suits me?”, “Compute EMI on 20 lakh at 9% for 15 years”, “hi”.</div>
+    </div>
+
+    <!-- MEMORY -->
+    <div id="tab-memory" class="hidden">
+      <p class="small mute" id="memtext"></p>
+      <div class="row"><label><input id="memconsent" type="checkbox"> Let Sahaj remember me between conversations</label>
+        <span class="spacer"></span><button class="btn danger small" id="memclear">Erase all</button></div>
+      <table id="memtable" style="margin-top:10px"></table>
+      <p class="small mute">Memory is saved when a conversation ends (close the socket or press “New conversation”).</p>
+    </div>
+
+    <!-- FILES -->
+    <div id="tab-files" class="hidden">
+      <p class="small mute" id="filetext"></p>
+      <div class="row"><label><input id="docconsent" type="checkbox"> Store my documents</label>
+        <label><input id="anaconsent" type="checkbox"> Let Sahaj read my PDFs to answer questions about them</label></div>
+      <p class="small mute" id="anatext"></p>
+      <div class="row" style="margin:8px 0"><input id="file" type="file" accept="application/pdf,image/png,image/jpeg,image/webp">
+        <button class="btn primary" id="upload">Upload</button><span id="uperr" class="small" style="color:var(--bad)"></span></div>
+      <table id="filetable"></table>
+      <p class="small mute">After a PDF shows <b>ready</b>, ask about it in Chat, e.g. “What does my document say about the prepayment charge?”. Answers cite <code>mydoc-…</code> sources.</p>
+    </div>
+
+    <!-- SYSTEM -->
+    <div id="tab-system" class="hidden">
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn" id="export">Download my data</button>
+        <button class="btn" id="refresh">Refresh token now</button>
+        <button class="btn danger" id="delacct">Delete my account</button>
+      </div>
+      <div class="two">
+        <div><h2>/ready</h2><pre id="readyjson"></pre></div>
+        <div><h2>Me</h2><pre id="mejson"></pre></div>
+      </div>
+      <div id="adminbox" class="hidden" style="margin-top:12px"><h2>Feedback review (admin)</h2><pre id="fbjson"></pre></div>
+      <p class="small mute">Also: <a href="/docs">API docs</a> · <a href="/metrics">/metrics</a></p>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {            // build DOM nodes from text only (replies and file names are never parsed as markup)
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids.flat()) if (k != null) n.append(k.nodeType ? k : document.createTextNode(k));
+  return n;
+};
+const store = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} } };
+
+// ------------------------------------------------------------------ API with automatic token refresh
+let access = store.get("access"), refresh = store.get("refresh"), me = null;
+function saveTokens(s) { access = s.access_token; refresh = s.refresh_token; store.set("access", access); store.set("refresh", refresh); me = s.user; }
+async function refreshTokens() {
+  if (!refresh) throw new Error("not signed in");
+  const r = await fetch("/auth/refresh", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: refresh }) });
+  if (!r.ok) { signOutLocal(); throw new Error("session expired"); }
+  saveTokens(await r.json());
+}
+async function api(path, opts = {}, retry = true) {
+  const headers = { ...(opts.headers || {}), authorization: "Bearer " + access };
+  if (opts.json !== undefined) { headers["content-type"] = "application/json"; opts = { ...opts, body: JSON.stringify(opts.json) }; }
+  const r = await fetch(path, { ...opts, headers });
+  if (r.status === 401 && retry && refresh) { await refreshTokens(); return api(path, opts, false); }
+  return r;
+}
+const j = async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText); return r.status === 204 ? null : r.json(); };
+
+// ------------------------------------------------------------------ sign-in
+function showApp(on) { $("#app").classList.toggle("hidden", !on); $("#auth").classList.toggle("hidden", on);
+  $("#signout").classList.toggle("hidden", !on); $("#who").textContent = on && me ? `${me.email} · ${me.role}` : ""; }
+function signOutLocal() { access = refresh = me = null; store.set("access", null); store.set("refresh", null); closeSocket(); showApp(false); }
+async function enter(session) { saveTokens(session); showApp(true); await Promise.all([loadMemory(), loadFiles(), loadSystem()]); startChat(); }
+$("#signout").onclick = async () => { if (refresh) await fetch("/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: refresh }) }); signOutLocal(); };
+$("#devgo").onclick = async () => {
+  $("#autherr").textContent = "";
+  try { await enter(await j(await fetch("/auth/dev", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: $("#devemail").value }) }))); }
+  catch (e) { $("#autherr").textContent = e.message; }
+};
+async function initAuth() {
+  const cfg = await fetch("/auth/config").then((r) => r.json()).catch(() => ({}));
+  $("#devbox").classList.toggle("hidden", !cfg.dev_login);
+  $("#googlebox").classList.toggle("hidden", !cfg.google_client_id);
+  $("#noauth").classList.toggle("hidden", !!(cfg.dev_login || cfg.google_client_id));
+  if (cfg.google_client_id) {
+    const s = el("script", { src: "https://accounts.google.com/gsi/client", async: true, onload: () => {
+      google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: async ({ credential }) => {
+        try { await enter(await j(await fetch("/auth/google", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id_token: credential, platform: "web" }) }))); }
+        catch (e) { $("#autherr").textContent = e.message; } } });
+      google.accounts.id.renderButton($("#gbtn"), { theme: "outline", size: "large" }); } });
+    document.head.append(s);
+  }
+  if (access) { try { await api("/users/me").then(j).then((u) => { me = u; }); await enter({ access_token: access, refresh_token: refresh, user: me }); } catch { signOutLocal(); } }
+}
+
+// ------------------------------------------------------------------ tabs
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b));
+  ["chat", "memory", "files", "system"].forEach((t) => $("#tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+  if (b.dataset.tab === "memory") loadMemory(); if (b.dataset.tab === "files") loadFiles(); if (b.dataset.tab === "system") loadSystem();
+});
+
+// ------------------------------------------------------------------ chat
+const log = $("#log"); let ws = null, sseSession = null, audioParts = [], awaitingAudio = false, lastUserText = "";
+const say = (cls, ...kids) => { const m = el("div", { className: "msg " + cls }, ...kids); log.append(m); log.scrollTop = log.scrollHeight; return m; };
+const setStage = (t) => { $("#stage").textContent = t ? "… " + t : ""; };
+const STAGES = { transcribing: "listening", thinking: "thinking", checking: "checking the answer against sources", speaking: "speaking" };
+
+function closeSocket() { if (ws) { ws.onclose = null; ws.close(); ws = null; } sseSession = null; }
+function startChat() { closeSocket(); log.replaceChildren(); setStage(""); say("sys", "New conversation. Pick a transport above; replies are checked before they appear."); if (transport() === "ws") openSocket(); }
+const transport = () => $("#transport").value;
+$("#transport").onchange = startChat;
+$("#newchat").onclick = async () => { if (sseSession) await api("/chat/" + sseSession, { method: "DELETE" }).catch(() => {}); startChat(); };
+
+function openSocket() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/voice?access_token=${encodeURIComponent(access)}`);
+  ws.binaryType = "blob";
+  ws.onmessage = ({ data }) => { if (data instanceof Blob) { audioParts.push(data); return; } onEvent(JSON.parse(data)); };
+  ws.onclose = async (e) => {
+    if (e.code === 4401) { try { await refreshTokens(); return openSocket(); } catch { return; } }
+    say("sys", "Connection closed.");
   };
+}
+async function sendMessage(message) {
+  if (transport() === "ws") {
+    if (!ws || ws.readyState !== 1) return say("err", "Not connected. Press “New conversation”.");
+    ws.send(JSON.stringify(message)); return;
+  }
+  const r = await api("/chat/stream", { method: "POST", json: { session_id: sseSession, message } });
+  if (!r.ok) { if (r.status === 404 && sseSession) { sseSession = null; return sendMessage(message); } return say("err", (await r.json().catch(() => ({}))).detail || r.statusText); }
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf("\n\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 2); if (line.startsWith("data: ")) onEvent(JSON.parse(line.slice(6))); }
+  }
+}
+const sendText = (text) => { lastUserText = text; sendMessage({ type: "text", text, language: $("#lang").value, speak: $("#speak").checked && transport() === "ws" }); };
+$("#form").onsubmit = (e) => { e.preventDefault(); const t = $("#text").value.trim(); if (!t) return; $("#text").value = ""; sendText(t); };
+$("#human").onclick = () => sendMessage({ type: "handoff" });
 
-  document.getElementById("human").onclick = () => send({ type: "handoff" });
+function onEvent(m) {
+  switch (m.type) {
+    case "session": sseSession = m.id; say("sys", `Session ${m.id.slice(0, 8)} · memory ${m.memory ? "in use" : "off"}`); break;
+    case "consent_required": askConsent(m); break;
+    case "consent": say("sys", `Consent “${m.purpose}”: ${m.status}`); break;
+    case "status": setStage(STAGES[m.stage] || m.stage); break;
+    case "user": say("me", m.text); break;
+    case "card": say("sys", el("details", {}, el("summary", {}, `Structured data: ${m.kind}`), el("pre", {}, JSON.stringify(m.card, null, 2)))); break;
+    case "assistant": setStage(""); renderAssistant(m); break;
+    case "handoff": say("sys", `Handed to a person. Reference ${m.reference}${m.reason ? " (" + m.reason + ")" : ""}`); break;
+    case "error": setStage(""); say("err", m.message); break;
+    case "done":
+      setStage("");
+      if (audioParts.length) { new Audio(URL.createObjectURL(new Blob(audioParts, { type: "audio/mpeg" }))).play().catch(() => {}); }
+      audioParts = []; break;
+  }
+}
+function askConsent(m) {
+  const box = say("ask", el("div", { className: "small mute" }, `Consent needed: ${m.purpose} (version ${m.version})`), el("div", {}, m.text),
+    el("div", { className: "row", style: "margin-top:8px" },
+      el("button", { className: "btn primary", onclick: () => { sendMessage({ type: "consent", purpose: m.purpose, granted: true }); box.remove(); } }, "I agree"),
+      el("button", { className: "btn", onclick: () => { sendMessage({ type: "consent", purpose: m.purpose, granted: false }); box.remove(); } }, "No thanks")));
+}
+const BADGES = { verified: ["✔ Verified against sources", "Every statement is tied to a source and was fact-checked."],
+  engine: ["⚙ From Sahaj's calculation engine", "Built from the recommendation or calculation engine's own figures."],
+  checked: ["◐ Checked", "Screened by the guardrails; there was nothing to cite."], blocked: ["⛔ Safe reply shown", "The draft failed the checks, so a safe reply was shown instead."] };
+function renderAssistant(m) {
+  const s = m.structured, v = m.verification, b = BADGES[v.level];
+  const srcById = Object.fromEntries(s.sources.map((x) => [x.id, x.text]));
+  const box = el("div", { className: "msg" });
+  box.append(el("div", { className: "badge " + v.level, title: b[1] }, b[0], v.from_cache ? " · cached" : ""));
+  if (s.points.length > 1) box.append(el("div", { className: "headline" }, s.summary));
+  const ul = el("ul", { className: "points" });
+  (s.points.length > 1 ? s.points.slice(1) : s.points).forEach((p) => {
+    const li = el("li", {}, p.text);
+    p.sources.forEach((id) => li.append(el("button", { className: "chip", title: "Show source", onclick: () => {
+      const open = li.querySelector(".src"); if (open) return open.remove(); li.append(el("div", { className: "src" }, id + "\n" + srcById[id])); } }, id)));
+    ul.append(li);
+  });
+  box.append(ul);
+  s.notes.forEach((n) => box.append(el("div", { className: "small mute" }, n)));
+  const rate = el("span", { className: "rate" });
+  [["up", "👍"], ["down", "👎"]].forEach(([r, icon]) => rate.append(el("button", { title: "Rate this reply", onclick: async (e) => {
+    const comment = r === "down" ? prompt("What was wrong? (optional)") : null;
+    try { await j(await api("/feedback", { method: "POST", json: { trace_id: m.trace_id, rating: r, comment: comment || null } }));
+      rate.querySelectorAll("button").forEach((x) => x.classList.remove("on")); e.target.classList.add("on"); } catch (err) { say("err", err.message); } } }, icon)));
+  box.append(el("div", { className: "row small mute" }, rate, el("span", {}, `${m.agent} · trace ${m.trace_id.slice(0, 8)}`)));
+  if (m.suggestions && m.suggestions.length) box.append(el("div", { className: "sugg" }, m.suggestions.map((t) => el("button", { onclick: () => { say("me", t); sendText(t); } }, t))));
+  log.append(box); log.scrollTop = log.scrollHeight;
+}
 
-  const talk = document.getElementById("talk");
-  talk.onpointerdown = () => {
-    parts = [];
-    rec = new MediaRecorder(stream);
-    rec.ondataavailable = (e) => parts.push(e.data);
-    rec.onstop = async () => ws.send(await new Blob(parts).arrayBuffer());
-    rec.start();
-  };
-  talk.onpointerup = () => rec.stop();
+// hold-to-talk (WebSocket only)
+let rec = null, mic = null, parts = [];
+$("#mic").onpointerdown = async () => {
+  if (transport() !== "ws" || !ws || ws.readyState !== 1) return say("err", "Voice needs the WebSocket transport.");
+  try { mic = mic || await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return say("err", "Microphone not available."); }
+  parts = []; rec = new MediaRecorder(mic); rec.ondataavailable = (e) => parts.push(e.data);
+  rec.onstop = async () => ws.send(await new Blob(parts).arrayBuffer()); rec.start(); $("#mic").textContent = "● Recording";
+};
+const stopMic = () => { if (rec && rec.state === "recording") rec.stop(); $("#mic").textContent = "🎤 Hold"; };
+$("#mic").onpointerup = stopMic; $("#mic").onpointerleave = stopMic;
+
+// ------------------------------------------------------------------ memory
+async function loadMemory() {
+  const d = await api("/users/me/memory").then(j);
+  $("#memtext").textContent = d.consent_text.text; $("#memconsent").checked = d.consent;
+  const t = $("#memtable"); t.replaceChildren(el("tr", {}, el("th", {}, "Kind"), el("th", {}, "What Sahaj remembers"), el("th", {}, "")));
+  d.items.forEach((i) => t.append(el("tr", {}, el("td", {}, i.kind === "fact" ? i.key.replace("_", " ") : "summary"), el("td", {}, i.content),
+    el("td", {}, el("button", { className: "btn small danger", onclick: async () => { await api("/users/me/memory/" + i.id, { method: "DELETE" }); loadMemory(); } }, "Delete")))));
+  if (!d.items.length) t.append(el("tr", {}, el("td", { colSpan: 3, className: "mute" }, "Nothing remembered yet.")));
+}
+$("#memconsent").onchange = async (e) => { await j(await api("/users/me/memory/consent", { method: "PUT", json: { granted: e.target.checked } })); loadMemory(); };
+$("#memclear").onclick = async () => { await api("/users/me/memory", { method: "DELETE" }); loadMemory(); };
+
+// ------------------------------------------------------------------ files
+let pollTimer = null;
+async function loadFiles() {
+  const d = await api("/files").then(j);
+  $("#filetext").textContent = d.consent_text.text; $("#anatext").textContent = d.analysis_consent_text.text;
+  $("#docconsent").checked = d.consent; $("#anaconsent").checked = d.analysis_consent; $("#anaconsent").disabled = !d.consent;
+  const t = $("#filetable"); t.replaceChildren(el("tr", {}, ["File", "Type", "Size", "Reading", ""].map((h) => el("th", {}, h))));
+  d.items.forEach((f) => t.append(el("tr", {}, el("td", {}, f.filename), el("td", {}, f.content_type.split("/")[1]), el("td", {}, (f.size_bytes / 1024).toFixed(1) + " KB"),
+    el("td", {}, f.index_status === "ready" ? `ready (${f.indexed_chunks} passages)` : f.index_status === "none" ? "—" : f.index_status),
+    el("td", {}, el("button", { className: "btn small", onclick: () => download(f) }, "Download"), " ",
+      el("button", { className: "btn small danger", onclick: async () => { await api("/files/" + f.id, { method: "DELETE" }); loadFiles(); } }, "Delete")))));
+  if (!d.items.length) t.append(el("tr", {}, el("td", { colSpan: 5, className: "mute" }, "No files yet.")));
+  clearTimeout(pollTimer); if (d.items.some((f) => f.index_status === "indexing")) pollTimer = setTimeout(loadFiles, 1500);
+}
+async function download(f) { const r = await api("/files/" + f.id); const a = el("a", { href: URL.createObjectURL(await r.blob()), download: f.filename }); a.click(); }
+$("#docconsent").onchange = async (e) => { await j(await api("/files/consent", { method: "PUT", json: { granted: e.target.checked } })); loadFiles(); };
+$("#anaconsent").onchange = async (e) => { await j(await api("/files/analysis/consent", { method: "PUT", json: { granted: e.target.checked } })); loadFiles(); };
+$("#upload").onclick = async () => {
+  $("#uperr").textContent = ""; const f = $("#file").files[0]; if (!f) return;
+  const body = new FormData(); body.append("file", f);
+  const r = await api("/files", { method: "POST", body });
+  if (!r.ok) { $("#uperr").textContent = (await r.json().catch(() => ({}))).detail || r.statusText; return; }
+  $("#file").value = ""; loadFiles();
+};
+
+// ------------------------------------------------------------------ account and system
+async function loadSystem() {
+  $("#mejson").textContent = JSON.stringify(await api("/users/me").then(j), null, 2);
+  const r = await fetch("/ready"); $("#readyjson").textContent = JSON.stringify(await r.json(), null, 2);
+  const isAdmin = me && me.role === "admin"; $("#adminbox").classList.toggle("hidden", !isAdmin);
+  if (isAdmin) $("#fbjson").textContent = JSON.stringify(await api("/admin/feedback?limit=10").then(j), null, 2);
+}
+$("#export").onclick = async () => { const r = await api("/users/me/export"); el("a", { href: URL.createObjectURL(await r.blob()), download: "sahaj-my-data.json" }).click(); };
+$("#refresh").onclick = async () => { await refreshTokens(); loadSystem(); };
+$("#delacct").onclick = async () => { if (confirm("Delete your account, memory and stored files?")) { await api("/users/me", { method: "DELETE" }); signOutLocal(); } };
+
+// ------------------------------------------------------------------ header health
+async function health() {
+  try {
+    const r = await fetch("/ready"); const d = await r.json();
+    $("#ready").textContent = r.ok ? "API ready" : "API not ready"; $("#ready").className = "pill " + (r.ok ? "ok" : "bad");
+    const kb = d.knowledge_base; $("#kb").textContent = kb ? (kb.ok ? `knowledge base · ${kb.clauses} clauses` : "knowledge base: " + kb.problem) : "knowledge base: ?";
+    $("#kb").className = "pill " + (kb && kb.ok ? "ok" : "bad");
+  } catch { $("#ready").textContent = "API unreachable"; $("#ready").className = "pill bad"; }
+}
+health(); setInterval(health, 15000); initAuth();
 </script>
+</body>
+</html>

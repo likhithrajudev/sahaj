@@ -2,7 +2,7 @@
  * Voice WebSocket protocol (`/ws/voice`).
  *
  * Source of truth is the backend, not the prose docs:
- *   events  apps/api/orchestrator/session.py
+ *   events  apps/api/orchestrator/session.py (desk events: apps/api/desk, routers/desk.py)
  *   cards   apps/api/advisory/flow.py (profile_summary, recommendation)
  *           apps/api/advisory/compare.py (comparison)
  *           apps/api/loan/flow.py + loan/calc.py (loan_calculation)
@@ -10,13 +10,24 @@
  * Update this file in the same change as any of those.
  */
 
-// ---------------------------------------------------------------- shared
+import type { User } from "./http";
 
-export type ConsentPurpose = "conversation" | "needs_analysis";
+/** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
+export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis";
 /** "advice" is the needs-analysis / recommendation flow. */
 export type AgentName = "insurance" | "loan" | "general" | "advice";
-export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions";
+export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
+
 export type InsuranceGoal = "health" | "term" | "whole_life";
+
+/** The open desk case: while it exists, messages go to the executive, not the AI. */
+export interface CaseView {
+  id: string;
+  reference: string;
+  kind: "handoff" | "complaint" | "video_kyc" | "callback";
+  status: "waiting" | "with_executive";
+  priority: "urgent" | "high" | "normal";
+}
 
 export interface Citation {
   /** Tag as it appears in the answer text without brackets, e.g. "health-lotus-care:3.2". */
@@ -35,23 +46,40 @@ export interface Citation {
 /** What produced an assistant message. */
 export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc";
 
-/** What the server is doing during a turn (for "Finding the right documents…" style hints). */
-export type StatusStep = "understanding" | "searching" | "comparing" | "calculating" | "thinking" | "checking";
-
 // ---------------------------------------------------------------- client -> server
-// Audio: send one complete recording (max 30 s, webm/opus) as a binary frame, only after done/error/handoff.
+// Audio: send one complete recording (max 30 s; WebM or Safari's MP4, detected server-side) as a binary frame,
+// only after done/error/handoff.
 
 export interface ConsentMessage {
   type: "consent";
   purpose: ConsentPurpose;
   granted: boolean;
+  /** The `version` of the text that was shown. Without it the grant is recorded as unconfirmed; a stale one is refused. */
+  version?: string;
 }
 
 export interface HandoffRequest {
   type: "handoff";
+  /** Default: a person, for anything. video_kyc needs the video_kyc consent. */
+  reason?: "video_kyc" | "callback" | "complaint";
+  note?: string;
 }
 
-export type ClientMessage = ConsentMessage | HandoffRequest;
+export interface HandoffCancel {
+  type: "handoff_cancel";
+}
+
+/** A typed message. It takes the same path as speech; the reply is spoken only when `speak` is true. */
+export interface TextMessage {
+  type: "text";
+  /** 1 to 2000 characters. */
+  text: string;
+  /** BCP-47 tag such as "hi-IN". Defaults to the user's profile language. */
+  language?: string;
+  speak?: boolean;
+}
+
+export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
 
 // ---------------------------------------------------------------- server -> client
 // Binary frames are MP3 chunks of the spoken answer; join them in order and play on `done`.
@@ -59,14 +87,27 @@ export type ClientMessage = ConsentMessage | HandoffRequest;
 export interface SessionEvent {
   type: "session";
   id: string;
+  user: User;
+  /** True when Sahaj is using what it remembers about this person in this conversation. */
+  memory: boolean;
+  /** A person is already handling this customer: carry on with them. */
+  case: CaseView | null;
 }
+
+/** Close code when the access token is missing, invalid or expired: refresh it (POST /auth/refresh) and reconnect. */
+export const WS_UNAUTHORIZED = 4401;
 
 export interface ConsentRequiredEvent {
   type: "consent_required";
   purpose: ConsentPurpose;
+  title: string;
   version: string;
   /** Show verbatim with accept and decline actions. */
   text: string;
+  required: boolean;
+  requires: ConsentPurpose | null;
+  /** What withdrawing does, for a confirmation. */
+  withdrawal: string;
 }
 
 export interface ConsentStatusEvent {
@@ -75,18 +116,76 @@ export interface ConsentStatusEvent {
   status: "granted" | "revoked";
 }
 
+/**
+ * Where a turn is, in order: transcribing → thinking → (searching | comparing | calculating) → checking → speaking.
+ * searching/comparing/calculating come from the graph node doing the work, for "Finding the right documents…" hints.
+ * speech_unavailable: the spoken reply could not be produced; the written reply is complete.
+ * Clients should ignore stages they don't know.
+ */
+export type Stage =
+  | "transcribing" | "thinking" | "searching" | "comparing" | "calculating" | "checking" | "speaking"
+  | "speech_unavailable" | "waiting_for_executive";
+
+/** Progress through a turn. Carries no content: the reply arrives whole, after the guardrails have passed it. */
+export interface StatusEvent {
+  type: "status";
+  stage: Stage;
+}
+
+/** The person has used BUDGET_WARN_AT (80%) of this month's allowance. Sent once per conversation. */
+export interface UsageWarningEvent {
+  type: "usage_warning";
+  spent_usd: number;
+  budget_usd: number;
+  percent_used: number;
+}
+
+/** The allowance is used up: the message was not processed. */
+export interface BudgetExceededEvent {
+  type: "budget_exceeded";
+  spent_usd: number;
+  budget_usd: number;
+  resets_at: string;
+}
+
 export interface UserEvent {
   type: "user";
   /** Transcript with identifiers already masked, e.g. "[PAN_1]". See MASK_TAG. */
   text: string;
 }
 
+/** The reply split into statements, each with the sources behind it. Built from the verified `text`, nothing added. */
+export interface StructuredReply {
+  kind: ReplyKind;
+  /** The first statement: a one-line headline. */
+  summary: string;
+  points: { text: string; sources: string[] }[];
+  /** Every source used, once; `points[].sources` refer to these ids. Display details are in `citations`. */
+  sources: { id: string; text: string }[];
+  /** Fixed text such as disclosures, kept apart from the answer. */
+  notes: string[];
+}
+
+/** How a reply was checked, for a trust badge. verified: every statement tied to a source and fact-checked.
+ *  engine: built from the recommendation/calculation engine's own figures. checked: screened by the guardrails, nothing to
+ *  cite. blocked: the draft failed the checks and a safe reply was shown instead. */
+export interface Verification {
+  level: "verified" | "engine" | "checked" | "blocked";
+  sources: number;
+  from_cache: boolean;
+  checks: ("guardrails" | "fact_check")[];
+}
+
 export interface AssistantEvent {
   type: "assistant";
   agent: AgentName;
-  /** Contains citation tags like "[health-lotus-care:3.2]". See CITATION_TAG. */
+  /** The whole reply, source tags included ("[health-lotus-care:3.2]", see CITATION_TAG). `structured` splits it into points. */
   text: string;
   citations: Citation[];
+  structured: StructuredReply;
+  verification: Verification;
+  /** Up to three follow-up questions to show as chips; send one back as a `text` message. Empty while Sahaj is asking something. */
+  suggestions: string[];
   trace_id: string;
   /** "ask" = Sahaj is asking a question (clarifying, or the next needs-analysis question). */
   kind: ReplyKind;
@@ -96,12 +195,6 @@ export interface AssistantEvent {
   progress?: { step: number; total: number };
 }
 
-/** Sent while a turn is being worked on, possibly several times. Ignore unknown steps. */
-export interface StatusEvent {
-  type: "status";
-  step: StatusStep;
-}
-
 export interface DoneEvent {
   type: "done";
 }
@@ -109,9 +202,16 @@ export interface DoneEvent {
 export interface HandoffEvent {
   type: "handoff";
   reference: string;
-  /** Absent when the server repeats the reference because audio arrived after a handoff. */
-  reason?: HandoffReason;
+  reason: HandoffReason;
+  case: CaseView;
 }
+
+export interface AgentJoinedEvent { type: "agent_joined"; case_id: string; agent: { name: string } }
+export interface AgentLeftEvent { type: "agent_left"; case_id: string }
+export interface AgentMessageEvent { type: "agent_message"; case_id: string; text: string; agent: { name: string }; at: string }
+export interface VideoKycScheduledEvent { type: "video_kyc_scheduled"; case_id: string; scheduled_for: string; meeting_url: string | null }
+/** The person finished (resolved) or the customer withdrew (cancelled): the AI answers again. */
+export interface HandoffClosedEvent { type: "handoff_closed"; case_id?: string; status: "resolved" | "cancelled"; outcome?: string; message?: string | null }
 
 export interface ErrorEvent {
   type: "error";
@@ -239,13 +339,20 @@ export type ServerEvent =
   | SessionEvent
   | ConsentRequiredEvent
   | ConsentStatusEvent
+  | StatusEvent
+  | UsageWarningEvent
+  | BudgetExceededEvent
   | CardEvent
   | UserEvent
   | AssistantEvent
   | DoneEvent
   | HandoffEvent
-  | ErrorEvent
-  | StatusEvent;
+  | AgentJoinedEvent
+  | AgentLeftEvent
+  | AgentMessageEvent
+  | VideoKycScheduledEvent
+  | HandoffClosedEvent
+  | ErrorEvent;
 
 export type ServerEventType = ServerEvent["type"];
 export type ServerEventOf<T extends ServerEventType> = Extract<ServerEvent, { type: T }>;
@@ -279,11 +386,18 @@ const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set<ServerEventType>([
   "session",
   "consent_required",
   "consent",
+  "status",
+  "usage_warning",
+  "budget_exceeded",
   "card",
   "user",
   "assistant",
   "done",
   "handoff",
+  "agent_joined",
+  "agent_left",
+  "agent_message",
+  "video_kyc_scheduled",
+  "handoff_closed",
   "error",
-  "status",
 ]);

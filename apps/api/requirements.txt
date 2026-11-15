@@ -7,14 +7,25 @@ alembic
 # Environment Variables
 python-dotenv
 
-# Knowledge base: Postgres + pgvector, local multilingual embeddings
 psycopg[binary,pool]
 pgvector
-fastembed
 
 # Orchestration: LangGraph graph, LangChain chat-model interface, prompts and caching
 langgraph
 langchain-core
 
+# Accounts: JWT access tokens, Google ID-token verification
+pyjwt[crypto]
+
+# Observability
+prometheus-client
+
+# File storage: Amazon S3
+boto3
+
+# Reading uploaded PDFs
+pypdf
+
 # Tests
 pytest
+moto[s3] 

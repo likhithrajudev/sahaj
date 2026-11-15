@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: sahaj-api
+    metrics_path: /metrics
+    static_configs:
+      # The API runs on the host (uvicorn). In a container network, use the service name instead.
+      - targets: ["host.docker.internal:8000"]
+    # If the API sets METRICS_TOKEN, put the same token (no newline) in infra/prometheus/metrics_token and uncomment:
+    # authorization:
+    #   type: Bearer
+    #   credentials_file: /etc/prometheus/metrics_token
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

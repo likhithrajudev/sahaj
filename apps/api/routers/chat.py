@@ -3,12 +3,13 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from auth.deps import current_user
 from auth.store import User
+from gateway.middleware import client_ip
 from orchestrator import registry
 
 log = logging.getLogger("sahaj.chat")
@@ -22,14 +23,14 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/stream", responses={200: {"content": {"text/event-stream": {}}}})
-async def stream(body: ChatRequest, user: User = Depends(current_user)):
+async def stream(body: ChatRequest, request: Request, user: User = Depends(current_user)):
     """The voice protocol over HTTP for text clients. The response is a Server-Sent Events stream: each `data:` line
     is one of the WebSocket's JSON events (`session`, `consent_required`, `status`, `user`, `card`, `assistant`, `done`,
     `handoff`, `error`), and the stream ends when the turn is finished. No audio is sent.
 
     The reply text arrives whole, after the guardrails have passed it; `status` events show progress meanwhile."""
     await registry.sweep()
-    entry, created = registry.acquire(user, body.session_id)
+    entry, created = registry.acquire(user, body.session_id, client_ip(request.scope))
     if entry is None:
         raise HTTPException(404, "No such conversation. It may have expired: start a new one without session_id.")
     queue: asyncio.Queue = asyncio.Queue()

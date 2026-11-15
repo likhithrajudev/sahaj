@@ -1,12 +1,18 @@
+import time
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from auth import store
+from auth import feedback as feedback_store, store
 from auth.deps import current_user, require_role
 from memory import store as memory_store
-from trust import consent
+from gateway.middleware import client_ip
+from routers.consents import fail
+from storage import files as file_store
+from trust import consent, consents, ledger
 
 router = APIRouter(tags=["Users"])
 
@@ -18,11 +24,13 @@ class ProfileUpdate(BaseModel):
 
 
 class ConsentUpdate(BaseModel):
+    """Kept for existing clients. New code should use PUT /consents/{purpose}, which requires the shown `version`."""
     granted: bool
+    version: Optional[str] = None
 
 
 class RoleUpdate(BaseModel):
-    role: Literal["user", "admin"]
+    role: Literal["user", "executive", "admin"]
 
 
 # ---------- the signed-in person
@@ -38,12 +46,26 @@ async def update_me(body: ProfileUpdate, user: store.User = Depends(current_user
 
 
 @router.delete("/users/me", status_code=204)
-async def delete_me(user: store.User = Depends(current_user)):
-    """Delete the account together with its sign-ins and everything remembered about the person."""
-    if consent.is_active(user.subject, "memory"):
-        consent.revoke(user.subject, "memory", channel="api")
+async def delete_me(request: Request, user: store.User = Depends(current_user)):
+    """Delete the account together with its sign-ins, everything remembered about the person and their stored files."""
+    for purpose in consent.active(user.subject):   # recorded as withdrawn, and each one erases what it allowed us to hold
+        await consents.withdraw(user, purpose, channel="account_deletion", ip=client_ip(request.scope))
+    await file_store.purge(user)   # and anything left, whatever its consent status was
     await store.delete_user(user.id)
     return Response(status_code=204)
+
+
+@router.get("/users/me/export")
+async def export_my_data(user: store.User = Depends(current_user)):
+    """Everything Sahaj holds about the person, as one JSON download: profile, consent history, memory, the list of
+    stored files (download each from /files/{id}) and the ratings they gave."""
+    consents = [{"purpose": e["payload"]["purpose"], "event": e["payload"]["event"], "version": e["payload"]["version"],
+                 "recorded_at": e["created_at"]} for e in ledger.entries(subject=user.subject, kind="consent")]
+    data = {"exported_at": time.time(), "profile": user.public(), "consents": consents,
+            "memory": await memory_store.all_for(user.id), "files": await file_store.list_for(user.id),
+            "feedback": await feedback_store.for_user(user.id),
+            "note": "Conversation audit records are kept without your identity (they carry a random session id only)."}
+    return JSONResponse(jsonable_encoder(data), headers={"Content-Disposition": 'attachment; filename="sahaj-my-data.json"'})
 
 
 # ---------- memory
@@ -55,13 +77,13 @@ async def get_memory(user: store.User = Depends(current_user)):
 
 
 @router.put("/users/me/memory/consent")
-async def set_memory_consent(body: ConsentUpdate, user: store.User = Depends(current_user)):
-    """Allow or stop remembering. Stopping also erases what is already remembered."""
-    if body.granted:
-        consent.grant(user.subject, "memory", channel="api")
-        return {"consent": True, "erased": 0}
-    consent.revoke(user.subject, "memory", channel="api")
-    return {"consent": False, "erased": await memory_store.delete_all(user.id)}
+async def set_memory_consent(body: ConsentUpdate, request: Request, user: store.User = Depends(current_user)):
+    """Allow or stop remembering. Stopping also erases what is already remembered. Same as PUT /consents/memory."""
+    try:
+        result = await consents.set_consent(user, "memory", body.granted, channel="api", version=body.version, ip=client_ip(request.scope))
+    except consents.ConsentError as e:
+        raise fail(e)
+    return {"consent": body.granted, "erased": result["erased"].get("memories", 0)}
 
 
 @router.delete("/users/me/memory/{memory_id}", status_code=204)

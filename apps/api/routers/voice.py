@@ -1,6 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from auth.deps import websocket_user
+from gateway.middleware import client_ip
+from observability import metrics
 from orchestrator.session import Session
 
 router = APIRouter(tags=["Voice"])
@@ -15,7 +17,8 @@ async def voice(ws: WebSocket):
     await ws.accept()
     if user is None:
         return await ws.close(code=UNAUTHORIZED, reason="Sign in first.")
-    session = Session(ws, user)
+    session = Session(ws, user, client_ip(ws.scope))
+    metrics.WS_CONNECTIONS.inc()
     try:
         await session.start()
         while True:
@@ -29,4 +32,5 @@ async def voice(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        metrics.WS_CONNECTIONS.dec()
         await session.close()

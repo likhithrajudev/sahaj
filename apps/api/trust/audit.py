@@ -2,6 +2,7 @@
 import time
 import uuid
 
+from observability import metrics
 from trust import ledger
 
 
@@ -13,6 +14,7 @@ class Trace:
 
     def add(self, step: str, **data) -> None:
         self.steps.append({"step": step, "t": round(time.time(), 3), **data})
+        metrics.observe(step, data)
 
     def withhold(self, step: str, field: str) -> None:
         """Replace one recorded field with a marker. Used for turns where the person gave personal details."""

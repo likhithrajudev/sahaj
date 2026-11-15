@@ -1,10 +1,62 @@
 # Sahaj Voice API: frontend integration guide
 
+> Every response carries `X-Request-ID` (quote it in bug reports). Calls can be refused with `429` (`Retry-After` says how long to wait) or `413`. See [observability.md](observability.md) for the limits.
+
 Talk to Sahaj by voice about insurance policies and loan offers. The client records the user's speech and sends it. The server replies with the transcript, a cited text answer and the answer as spoken audio. Sahaj routes each question to an insurance or loan specialist, and every turn passes consent, PII masking, answer-checking guardrails and an audit trail.
 
 - **Voice endpoint:** `ws://127.0.0.1:8000/ws/voice` (use `wss://` in production)
 - **Interactive REST docs:** `http://127.0.0.1:8000/docs`
 - **Sign-in required:** see [Authentication](#authentication)
+- **Try it by hand:** run the API and open `http://127.0.0.1:8000/test/` (a test console covering sign-in, chat over WebSocket or SSE, memory, files and feedback)
+
+## Talking to a person (customer executive desk)
+
+Some conversations need a person: when the customer asks, when they complain or are in distress, when Sahaj keeps failing or keeps having to ask what they mean, and for video KYC (RBI requires a person to conduct it). Each becomes a **case** on the executive desk, carrying the masked conversation so far.
+
+**Customer side, on the socket**
+- `{"type":"handoff"}` (the "talk to a person" button), or with `"reason":"video_kyc"|"callback"|"complaint"` and an optional `"note"`. Video KYC needs the `video_kyc` consent first (otherwise you get `consent_required`).
+- You get `{"type":"handoff","reference","reason","case":{"id","reference","kind","status":"waiting"|"with_executive","priority"}}`. **From then on, `text` and audio go to the executive, not the AI**; while nobody has picked it up you get `status: waiting_for_executive`.
+- Then: `agent_joined` (`agent.name`), `agent_message` (`text`, `agent`, `at`), `agent_left` (back in the queue), `video_kyc_scheduled` (`scheduled_for`, `meeting_url`), and `handoff_closed` (`status`: `resolved` or `cancelled`, optional `message`), after which the AI answers again.
+- `{"type":"handoff_cancel"}` withdraws the request.
+- The `session` event's `case` field is the open case, if any, so a reconnecting customer goes straight back to their executive.
+- Escalation is automatic for complaints (priority high) and distress (urgent): Sahaj acknowledges in one fixed sentence and hands over at once.
+
+**Customer side, over REST:** `GET /cases` (their cases, and the thread of the open one, so replies sent while they were away are shown), `POST /cases` (`{"kind":"video_kyc"|"callback"|"complaint"|"help","note"}`), `POST /cases/{id}/messages`, `POST /cases/{id}/cancel`. A person has at most one open case; asking again adds to it, and a more serious reason raises its priority.
+
+**Executives** (role `executive`, granted by an admin with `PATCH /admin/users/{id}/role`):
+- `WS /ws/desk?access_token=…`: a `queue` snapshot, then `case_opened`, `case_updated`, `customer_message`, `case_claimed`, `case_released`, `case_closed`.
+- `GET /desk/queue?view=open|mine|overdue|all` (by priority then age, with pick-up deadlines: urgent 5 min, high 30, normal 120) and `GET /desk/cases/{id}` (reason, the masked conversation before it, the thread, the customer's name, contact, language, consents and whether they are online, and the audit `trace_id`).
+- `POST /desk/cases/{id}/claim` (409 if someone was first), `/release`, `/messages` (`{"text"}`), `/video-kyc` (`{"scheduled_for": "<ISO time with zone>", "meeting_url": "https://…"}`), `/resolve` (`{"outcome": "resolved"|"escalated_offline"|"no_response"|"duplicate", "resolution", "message"}`).
+- Customer messages reach executives masked (`[PAN_1]`, `[PHONE_1]`). Every claim, release, booking and close is written to the audit ledger with who did it.
+
+## Usage and spending limit
+
+Every model call, speech-to-text request and text-to-speech request a person causes is recorded with its estimated cost in US dollars. Each person may spend **$5 a month** by default (calendar month, UTC); an admin can change it per person.
+
+- **Which model answers:** voice conversations go through Sarvam end to end (speech-to-text, the answer, and speech). Typed conversations (socket `text` messages and `/chat/stream`) are answered by OpenAI (`gpt-4o-mini`), whose prompt cache is shared across users: in testing, 57% of input tokens on a second question came from it. The knowledge base is searched with OpenAI embeddings either way.
+- `GET /users/me/usage`: `budget_usd`, `spent_usd`, `remaining_usd`, `percent_used`, the period (`start`, `resets_at`), token totals, and the spend `by_provider`, `by_kind` (llm, stt, tts), `by_purpose` and `by_channel`. `estimate: true`: figures come from configured prices, not an invoice.
+- **Near the limit** (80%), the socket sends `{"type":"usage_warning","spent_usd","budget_usd","percent_used"}` once per conversation.
+- **Over the limit**, a turn is refused before anything is spent: `{"type":"budget_exceeded","spent_usd","budget_usd","resets_at"}` followed by an `error`. Show when it renews.
+- **Admins:** `GET /admin/usage` (this month's top spenders), `PATCH /admin/users/{id}/budget` with `{"budget_usd": 10}` (or `null` for the default).
+- If speech synthesis fails, the written reply still arrives, followed by `{"type":"status","stage":"speech_unavailable"}` and `done`.
+
+## Consent
+
+Consent belongs to the **signed-in person**, not to a connection: grant it once and it carries over to later conversations, until it expires (365 days) or the consent text changes. Everything a consent screen needs is in one API:
+
+| Call | Purpose |
+|---|---|
+| `GET /consents` | Every purpose: `purpose`, `title`, `text` (show verbatim), `version`, `required`, `requires`, `withdrawal` (what withdrawing does, for the confirm dialog), `granted`, `granted_at`, `expires_at`, and `action`: `ask` (never decided or withdrawn), `renew` (expired, or the text changed) or `none`. `missing_required` lists what must be granted before Sahaj can be used (`conversation`). |
+| `PUT /consents/{purpose}` | `{"granted": true, "version": "<the version you showed>"}` or `{"granted": false}`. Granting **requires** `version`, so the record proves which text was agreed to. |
+| `GET /consents/history?purpose=` | The person's own record, oldest first: event, version, text hash, channel, request id, expiry. |
+
+Behaviour to design for:
+- **Stale text.** If `version` is not the current one, you get `409` with `detail.code = "stale_version"` and `detail.current` (the new text and version): show it and ask again.
+- **Dependencies.** `needs_analysis` needs `conversation`; `document_analysis` needs `documents`. Granting without the prerequisite is a `409` (`code: "requires"`, `purpose` names what is missing). **Withdrawing a purpose also withdraws the ones that depend on it**; the response's `withdrawn` lists them all.
+- **Withdrawal erases.** `memory` erases remembered data, `documents` deletes every stored file, `document_analysis` erases what was learned from the PDFs, `needs_analysis` and `conversation` forget the details held in the conversation. The response's `erased` says what was removed. If erasing fails, the withdrawal still stands and you get a `500` with `code: "erasure_failed"`: withdraw again to retry.
+- **Sockets.** `consent_required` events carry `purpose`, `title`, `version`, `text`, `required`, `requires` and `withdrawal`. Answer with `{"type":"consent","purpose":"...","granted":true,"version":"<event.version>"}`. A `version` that is not current gets an `error` and a fresh `consent_required`. Withdrawing sends a `consent` event with `status: "revoked"` for every purpose it took with it. Without a `version` the grant is still accepted but recorded as *unconfirmed*.
+- **Withdrawn elsewhere.** If a person withdraws from settings while a conversation is open, the conversation drops what it held on the next message and asks again if `conversation` is gone.
+- The older endpoints (`PUT /files/consent`, `PUT /files/analysis/consent`, `PUT /users/me/memory/consent`) still work and write the same record.
 
 ## Authentication
 
@@ -24,6 +76,26 @@ Sahaj signs people in with Google and then uses its own JWTs. `/ws/voice`, `/use
 | `PATCH /users/me` | Update `name`, `language` (for example `hi-IN`) or `platform`. |
 | `DELETE /users/me` | Delete the account, its sign-ins and everything remembered (204). |
 | `GET /admin/users`, `PATCH /admin/users/{id}/role` | Admin only. Roles are `user` and `admin`. |
+
+## Files
+
+Signed-in users can store documents (a loan offer, a policy). Files are private: they sit in a private Amazon S3 bucket, there are no shareable links, and only the owner can download them through the API.
+
+1. `GET /files` returns the user's files, the `limits` and `consent_text`. Show the text verbatim, then `PUT /files/consent` with `{"granted": true}`. Uploads return `403` until then.
+2. `POST /files` (multipart field `file`) stores one PDF, PNG, JPEG or WebP, up to 8 MB, at most 50 per person. The type is decided by the file's contents, not its name or declared type (`415` otherwise; `413` too large; `409` at the file limit; `503` if storage is not set up). The response is the file record.
+3. `GET /files/{id}` downloads it (as an attachment), `DELETE /files/{id}` removes it (204). Another person's id is a `404`.
+4. Withdrawing consent (`granted: false`) or deleting the account **deletes every stored file**.
+
+### Asking questions about your own documents
+
+A second consent, `document_analysis`, lets Sahaj read uploaded **PDFs** (not images or scans: there is no OCR) so questions can be asked about them.
+
+1. `GET /files` returns `analysis_consent` and `analysis_consent_text`. Show the text verbatim, then `PUT /files/analysis/consent` with `{"granted": true}` (needs the `documents` consent first). That reads the PDFs already stored; new uploads are read straight away.
+2. Each file's `index_status` goes `indexing` then `ready` (or `empty`, `unsupported`, `failed`). Poll `GET /files` until it is `ready`.
+3. Then just ask in chat, for example *"What is the prepayment charge in my offer?"*. Answers cite the person's own passages as `mydoc-<id>:p<page>.<n>`, and `structured.sources[].text` begins with the file name and page. Identifiers such as PAN, Aadhaar, phone and account numbers are masked **before** a passage is stored or shown to the AI model.
+4. Withdrawing `document_analysis` forgets everything learned (the files stay). Withdrawing `documents` or deleting the account removes it all. Replies that used a person's documents are never cached or shared.
+
+Sahaj does not virus-scan uploaded files.
 
 ## Memory
 
@@ -62,6 +134,31 @@ POST /chat/stream
 
 Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
 
+## Trust badge and follow-ups
+
+Every `assistant` event also carries:
+
+- `verification`: `{level, sources, from_cache, checks}`. `level` is `verified` (each statement tied to a source and fact-checked), `engine` (built from the recommendation or calculation engine's own figures), `checked` (screened by the guardrails, nothing to cite) or `blocked` (the draft failed the checks, so a safe reply was shown). Show it as a badge.
+- `suggestions`: up to three follow-up questions to show as chips; send one back as a `text` message. Empty while Sahaj is itself asking a question or after a person has taken over.
+
+**Rating replies.** `POST /feedback` with `{"trace_id": "<the reply's trace_id>", "rating": "up"|"down", "comment": "..."}` (204). One rating per person per reply; rating again replaces it. A comment is stored with personal identifiers masked. Admins review ratings at `GET /admin/feedback`, and each carries the `trace_id` for `/audit/trace/{id}`.
+
+**Download my data.** `GET /users/me/export` returns profile, consent history, memory, the file list and the person's ratings as one JSON download.
+
+## Structured replies
+
+Every `assistant` event carries `structured` next to `text`, so a UI can render a reply as a headline, a list of statements and source chips without parsing tags:
+
+```json
+{"type":"assistant","agent":"insurance","text":"The waiting period is 30 days. [doc:1.1] Cover is up to 1.5 lakh. [doc:2.3]",
+ "structured":{"kind":"answer","summary":"The waiting period is 30 days.",
+   "points":[{"text":"The waiting period is 30 days.","sources":["doc:1.1"]},{"text":"Cover is up to 1.5 lakh.","sources":["doc:2.3"]}],
+   "sources":[{"id":"doc:1.1","text":"..."},{"id":"doc:2.3","text":"..."}],
+   "notes":["Premiums are indicative."]}}
+```
+
+It is the same verified text, split and labelled: nothing is added or reworded. `notes` holds fixed text such as disclosures. For recommendations and comparisons the `card` event still carries the figures, and `structured` carries the narration. `kind` tells you how to style it (`ask` is a question to the user).
+
 ## Session flow
 
 ```
@@ -86,7 +183,7 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 | Frame | Content |
 |---|---|
 | **Binary** | One complete recording (maximum 30 seconds). Send it only after `done`, `error` or `handoff`. |
-| **Text (JSON)** | `{"type":"consent","purpose":"...","granted":true\|false}`: grant or withdraw consent. |
+| **Text (JSON)** | `{"type":"consent","purpose":"...","granted":true\|false,"version":"..."}`: grant or withdraw consent (`version` = the version shown; see [Consent](#consent)). |
 | | `{"type":"text","text":"...","language":"en-IN","speak":false}`: a typed message (see [Text chat](#text-chat-and-streaming)). |
 | | `{"type":"handoff"}`: the **talk to a human** button. Send it any time. |
 
@@ -95,10 +192,14 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 | `type` | Fields | What to do |
 |---|---|---|
 | `session` | `id`, `user`, `memory` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. |
-| `status` | `stage` | Progress of the current turn: `transcribing`, `thinking`, `checking`, `speaking`. No content. |
-| `consent_required` | `purpose`, `version`, `text` | Show `text` exactly as sent with accept and decline buttons, then reply with a `consent` message. No audio is processed until `conversation` is granted. A second purpose, `needs_analysis`, is requested the first time the user asks for a recommendation: it covers using their age, income, family and existing cover. If they decline, Sahaj still explains and compares plans but will not ask for or use personal details. |
+| `status` | `stage` | Progress of the current turn: `transcribing`, `thinking`, `checking`, `speaking`, or `speech_unavailable` (the written reply is complete; the spoken one failed). No content. |
+| `usage_warning` | `spent_usd`, `budget_usd`, `percent_used` | The person has used 80% of this month's allowance. |
+| `budget_exceeded` | `spent_usd`, `budget_usd`, `resets_at` | The allowance is used up; the message was not processed. |
+| `handoff` | `reference`, `reason`, `case` | A person is now handling the conversation (see [Talking to a person](#talking-to-a-person-customer-executive-desk)). |
+| `agent_joined`, `agent_message`, `agent_left`, `video_kyc_scheduled`, `handoff_closed` | see that section | Events from the executive desk. |
+| `consent_required` | `purpose`, `title`, `version`, `text`, `required`, `requires`, `withdrawal` | Show `text` exactly as sent with accept and decline buttons, then reply with a `consent` message that echoes `version` (see [Consent](#consent)). No audio is processed until `conversation` is granted. A second purpose, `needs_analysis`, is requested the first time the user asks for a recommendation: it covers using their age, income, family and existing cover. If they decline, Sahaj still explains and compares plans but will not ask for or use personal details. |
 | `card` | `kind`, `card`, `trace_id` | Structured data to render as UI, sent just before the matching `assistant` message. See "Cards" below. Always trust the card over the spoken text for figures. |
-| `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets the conversation. |
+| `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets what that purpose allowed it to hold (one event per purpose withdrawn, including dependents). |
 | `user` | `text` | The transcript as a user message. **Personal identifiers are already masked** (for example `[PAN_1]`, `[PHONE_1]`). Show it as is. |
 | `assistant` | `agent`, `text`, `citations`, `trace_id` | The answer. `agent` is `insurance`, `loan` or `general`. `text` contains source tags like `[policy:3.2]`. Render each tag as a link or footnote to the matching entry in `citations`, which holds the clause text. Keep `trace_id` for support. |
 | *(binary)* | | MP3 chunks of the spoken answer. Join them in order. |
@@ -181,7 +282,7 @@ rec.onstop = async () => { ws.send(await new Blob(parts).arrayBuffer()); parts =
 
 ## Known limits (current version)
 
-- **No user authentication.** A session is anonymous, and consent is tied to the socket session. Add login before real use. `/stt` and the WebSocket are open to anyone who can reach the server.
+- **`/stt` is open.** The WebSocket, chat, files and consent need a sign-in, but `POST /stt` still accepts anyone who can reach the server.
 - No CORS configuration, so `fetch` to `/stt` from another origin is blocked until it is added.
 - Push-to-talk only: no interrupting the agent and no automatic end-of-speech detection.
 - Conversation history is in memory only. The audit ledger is SQLite for now (Postgres planned).

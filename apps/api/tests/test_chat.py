@@ -189,3 +189,70 @@ def test_idle_conversations_are_swept_and_the_per_user_cap_holds(monkeypatch):
         await asyncio.sleep(0)
         assert len([e for e in registry._entries.values() if e.user_id == USER.id]) == registry.MAX_PER_USER
     asyncio.run(go())
+
+
+# ---------------------------------------------------------------- structured replies
+from orchestrator import structure
+
+SRC = {"doc:1.1": "1.1 Waiting period. 30 days.", "doc:2.3": "2.3 Cover. Up to 1.5 lakh."}
+
+
+def test_structure_splits_statements_and_keeps_their_sources():
+    text = "The waiting period is 30 days. [doc:1.1] Cover is up to 1.5 lakh [doc:2.3]. Ask me anything else?"
+    s = structure.build(text, ["Premiums are indicative."], SRC, "answer")
+    assert [p["text"] for p in s["points"]] == ["The waiting period is 30 days.", "Cover is up to 1.5 lakh.", "Ask me anything else?"]
+    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], ["doc:2.3"], []]
+    assert s["summary"] == "The waiting period is 30 days."
+    assert [x["id"] for x in s["sources"]] == ["doc:1.1", "doc:2.3"] and s["notes"] == ["Premiums are indicative."]
+    assert "[" not in "".join(p["text"] for p in s["points"])
+
+
+def test_structure_drops_tags_the_reply_was_not_allowed_to_cite_and_handles_hindi_and_empty():
+    s = structure.build("प्रतीक्षा अवधि 30 दिन है। [doc:1.1] यह गलत है [doc:9.9]।", [], SRC, "answer")
+    assert [p["sources"] for p in s["points"]] == [["doc:1.1"], []]
+    assert structure.build("", [], {}, "ask")["points"] == []
+
+
+def test_assistant_event_carries_the_structured_view_and_unchanged_text():
+    ws = FakeWS()
+    s = session_module.Session(ws, USER)
+    asyncio.run(s.on_control(CONSENT))
+    asyncio.run(s.on_control(json.dumps({"type": "text", "text": "waiting period?"})))
+    reply = next(m for m in ws.sent if m["type"] == "assistant")
+    assert reply["text"] == "The waiting period is 30 days." and reply["structured"]["summary"] == reply["text"]
+    assert reply["structured"]["kind"] == "answer" and reply["structured"]["sources"] == []
+
+
+# ---------------------------------------------------------------- trust badge and suggestions
+from orchestrator import suggest
+
+
+@pytest.mark.parametrize("kwargs, level", [
+    (dict(blocked=True, from_cache=False, prechecked=False, judged=True, sources=2, kind="answer"), "blocked"),
+    (dict(blocked=False, from_cache=False, prechecked=False, judged=True, sources=2, kind="answer"), "verified"),
+    (dict(blocked=False, from_cache=True, prechecked=True, judged=False, sources=2, kind="answer"), "verified"),
+    (dict(blocked=False, from_cache=False, prechecked=True, judged=False, sources=0, kind="answer"), "engine"),
+    (dict(blocked=False, from_cache=False, prechecked=False, judged=False, sources=3, kind="recommendation"), "engine"),
+    (dict(blocked=False, from_cache=False, prechecked=False, judged=False, sources=0, kind="answer"), "checked"),
+])
+def test_verification_levels(kwargs, level):
+    assert suggest.verification(**kwargs)["level"] == level
+
+
+def test_suggestions():
+    assert len(suggest.for_intent("insurance_explain", "en-IN", "answer", False)) == 3
+    assert suggest.for_intent("insurance_explain", "hi-IN", "answer", False)[0] != suggest.for_intent("insurance_explain", "en-IN", "answer", False)[0]
+    assert suggest.for_intent("insurance_explain", "ta-IN", "answer", False)[0].startswith("Which")   # falls back to English
+    assert suggest.for_intent("insurance_explain", "en-IN", "ask", False) == []        # a question is pending
+    assert suggest.for_intent("insurance_explain", "en-IN", "answer", True) == []      # a person has taken over
+    assert suggest.for_intent("something_new", "en-IN", "answer", False) == suggest.SUGGESTIONS["greeting"]["en-IN"]
+
+
+def test_assistant_event_carries_verification_and_suggestions():
+    ws = FakeWS()
+    s = session_module.Session(ws, USER)
+    asyncio.run(s.on_control(CONSENT))
+    asyncio.run(s.on_control(json.dumps({"type": "text", "text": "hi"})))
+    reply = next(m for m in ws.sent if m["type"] == "assistant")
+    assert reply["verification"]["level"] == "engine" and "guardrails" in reply["verification"]["checks"]
+    assert len(reply["suggestions"]) == 3

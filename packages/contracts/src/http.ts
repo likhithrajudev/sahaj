@@ -13,7 +13,7 @@ export interface SttResponse {
 // ---------- Accounts ----------
 
 export type Platform = "web" | "android" | "ios";
-export type Role = "user" | "admin";
+export type Role = "user" | "executive" | "admin";
 
 export interface User {
   id: string;
@@ -93,6 +93,151 @@ export interface ChatStreamRequest {
   message: import("./voice").ClientMessage;
 }
 
+// ---------- Files ----------
+
+export interface StoredFile {
+  id: string;
+  filename: string;
+  content_type: "application/pdf" | "image/png" | "image/jpeg" | "image/webp";
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+  /** none: not read; indexing; ready: questions can be asked about it; empty: no readable text (a scan);
+   *  unsupported: an image; failed. Only PDFs are read, and only with the document_analysis consent. */
+  index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "failed";
+  indexed_chunks: number;
+}
+
+/** GET /files */
+export interface FilesResponse {
+  consent: boolean;
+  /** Show `consent_text.text` verbatim before asking for consent. */
+  consent_text: { purpose: "documents"; version: string; text: string };
+  /** Consent to read PDFs so questions can be asked about them (separate from storing them). */
+  analysis_consent: boolean;
+  analysis_consent_text: { purpose: "document_analysis"; version: string; text: string };
+  limits: { max_bytes: number; max_files: number; types: string[] };
+  items: StoredFile[];
+}
+
+/** PUT /files/consent. Withdrawing deletes every stored file. */
+export interface FilesConsentResponse {
+  consent: boolean;
+  deleted: number;
+}
+
+/** PUT /files/analysis/consent. Granting reads the PDFs already stored (`queued`); withdrawing forgets what was learned. */
+export interface AnalysisConsentResponse {
+  consent: boolean;
+  queued?: number;
+  forgotten?: number;
+}
+
+/** POST /feedback (204). One rating per person per reply; rating again replaces it. */
+export interface FeedbackRequest {
+  trace_id: string;
+  rating: "up" | "down";
+  comment?: string;
+}
+
+/** GET /ready */
+export interface ReadyResponse {
+  status: "ready";
+  storage: "ok" | "down" | "not configured";
+  knowledge_base: { ok: boolean; clauses: number; domains?: Record<string, number>; problem?: string };
+}
+
+/** GET /auth/config: what a client needs to start sign-in. */
+export interface AuthConfig {
+  google_client_id: string | null;
+  /** True only for a local developer: POST /auth/dev {email} then signs in without Google. */
+  dev_login: boolean;
+}
+
+// ---------- Consent ----------
+
+export type ConsentPurposeName = import("./voice").ConsentPurpose | "video_kyc";
+
+export interface ConsentItem {
+  purpose: ConsentPurposeName;
+  title: string;
+  /** Show verbatim. */
+  text: string;
+  version: string;
+  required: boolean;
+  requires: ConsentPurposeName | null;
+  /** What withdrawing does, for the confirm dialog. */
+  withdrawal: string;
+  granted: boolean;
+  granted_at: number | null;
+  expires_at: number | null;
+  granted_version: string | null;
+  /** ask: never decided or withdrawn. renew: expired or the text changed. none: nothing to do. */
+  action: "ask" | "renew" | "none";
+}
+
+/** GET /consents */
+export interface ConsentsResponse {
+  items: ConsentItem[];
+  /** Purposes that must be granted before Sahaj can be used. */
+  missing_required: ConsentPurposeName[];
+}
+
+/** PUT /consents/{purpose}. `version` is required when granting. */
+export interface ConsentDecision {
+  granted: boolean;
+  version?: string;
+}
+
+export interface ConsentDecisionResponse {
+  purpose: ConsentPurposeName;
+  granted: boolean;
+  /** Every purpose that went off, including ones that depended on this one. */
+  withdrawn: ConsentPurposeName[];
+  /** What was erased, e.g. { files: 2 }. */
+  erased: Record<string, number>;
+  item: ConsentItem;
+}
+
+/** The 409/500 `detail` of a refused decision. `current` is the up-to-date text when code is stale_version. */
+export interface ConsentError {
+  code: "stale_version" | "requires" | "unknown_purpose" | "version_required" | "erasure_failed";
+  message: string;
+  current?: ConsentItem;
+}
+
+/** GET /consents/history */
+export interface ConsentRecord {
+  purpose: ConsentPurposeName;
+  event: "granted" | "revoked";
+  version: string;
+  text_sha256: string;
+  /** True when the client echoed the version it showed. */
+  version_confirmed: boolean | null;
+  channel: string;
+  request_id: string | null;
+  expires_at: number | null;
+  recorded_at: number;
+  ledger_hash: string;
+}
+
+/** GET /users/me/usage. All amounts are estimated USD from configured prices. */
+export interface UsageSummary {
+  period: { start: string; resets_at: string };
+  budget_usd: number;
+  spent_usd: number;
+  remaining_usd: number;
+  percent_used: number | null;
+  enforced: boolean;
+  model_calls: number;
+  tokens: { input: number; output: number; cached_input: number };
+  by_provider: Record<string, number>;
+  by_kind: Record<"llm" | "stt" | "tts", number>;
+  by_purpose: Record<string, number>;
+  by_channel: Record<string, number>;
+  estimate: true;
+}
+
 export const API_ROUTES = {
   health: "/health",
   stt: "/stt",
@@ -106,4 +251,18 @@ export const API_ROUTES = {
   adminUsers: "/admin/users",
   chatStream: "/chat/stream",
   chat: "/chat",
+  consents: "/consents",
+  consentsHistory: "/consents/history",
+  files: "/files",
+  filesAnalysisConsent: "/files/analysis/consent",
+  feedback: "/feedback",
+  ready: "/ready",
+  usage: "/users/me/usage",
+  adminUsage: "/admin/usage",
+  cases: "/cases",
+  deskQueue: "/desk/queue",
+  deskSocket: "/ws/desk",
+  authConfig: "/auth/config",
+  export: "/users/me/export",
+  filesConsent: "/files/consent",
 } as const;

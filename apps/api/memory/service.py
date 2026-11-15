@@ -10,6 +10,7 @@ import re
 from typing import Dict, List, Optional
 
 from memory import store
+from observability.metrics import MEMORY_EVENTS
 from services.chat import chat
 from trust.pii import Vault
 
@@ -63,14 +64,15 @@ def parse(raw: str) -> Dict:
 async def remember(user_id: str, history: List[dict]) -> bool:
     """Summarise a finished conversation into memory. Returns whether anything was stored."""
     lines = [f"{m['role']}: {m['content']}" for m in history if not m["content"].startswith("[")]
-    if len(lines) < 2:  # nothing was exchanged beyond placeholders for personal details
-        return False
+    if sum(1 for m in history if m["role"] == "user" and not m["content"].startswith("[")) < 2:
+        return False   # one question is not worth a model call to summarise
     reply = await chat([{"role": "system", "content": INSTRUCTIONS},
                         {"role": "user", "content": "Conversation:\n" + "\n".join(lines)}], purpose="memory")
     note = parse(reply)
     if not note["summary"] and not note["facts"]:
         return False
     await store.save(user_id, note["summary"], note["facts"])
+    MEMORY_EVENTS.labels("saved").inc()
     return True
 
 

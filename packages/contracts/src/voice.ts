@@ -6,9 +6,18 @@
 import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
-export type ConsentPurpose = "conversation" | "needs_analysis" | "memory";
+export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis";
 export type AgentName = "insurance" | "loan" | "general";
-export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions";
+export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
+
+/** The open desk case: while it exists, messages go to the executive, not the AI. */
+export interface CaseView {
+  id: string;
+  reference: string;
+  kind: "handoff" | "complaint" | "video_kyc" | "callback";
+  status: "waiting" | "with_executive";
+  priority: "urgent" | "high" | "normal";
+}
 
 export interface Citation {
   /** Source tag as it appears in the answer text, e.g. "policy:3.2". */
@@ -22,10 +31,19 @@ export interface ConsentMessage {
   type: "consent";
   purpose: ConsentPurpose;
   granted: boolean;
+  /** The `version` of the text that was shown. Without it the grant is recorded as unconfirmed; a stale one is refused. */
+  version?: string;
 }
 
 export interface HandoffRequest {
   type: "handoff";
+  /** Default: a person, for anything. video_kyc needs the video_kyc consent. */
+  reason?: "video_kyc" | "callback" | "complaint";
+  note?: string;
+}
+
+export interface HandoffCancel {
+  type: "handoff_cancel";
 }
 
 /** A typed message. It takes the same path as speech; the reply is spoken only when `speak` is true. */
@@ -38,7 +56,7 @@ export interface TextMessage {
   speak?: boolean;
 }
 
-export type ClientMessage = ConsentMessage | HandoffRequest | TextMessage;
+export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
 
 // ---------- Server -> client (JSON text frames; MP3 chunks arrive as binary frames) ----------
 
@@ -48,6 +66,8 @@ export interface SessionEvent {
   user: User;
   /** True when Sahaj is using what it remembers about this person in this conversation. */
   memory: boolean;
+  /** A person is already handling this customer: carry on with them. */
+  case: CaseView | null;
 }
 
 /** Close code when the access token is missing, invalid or expired: refresh it (POST /auth/refresh) and reconnect. */
@@ -56,9 +76,14 @@ export const WS_UNAUTHORIZED = 4401;
 export interface ConsentRequiredEvent {
   type: "consent_required";
   purpose: ConsentPurpose;
+  title: string;
   version: string;
   /** Show verbatim with accept and decline buttons. */
   text: string;
+  required: boolean;
+  requires: ConsentPurpose | null;
+  /** What withdrawing does, for a confirmation. */
+  withdrawal: string;
 }
 
 export interface ConsentStatusEvent {
@@ -67,12 +92,29 @@ export interface ConsentStatusEvent {
   status: "granted" | "revoked";
 }
 
-export type Stage = "transcribing" | "thinking" | "checking" | "speaking";
+/** speech_unavailable: the spoken reply could not be produced; the written reply is complete. */
+export type Stage = "transcribing" | "thinking" | "checking" | "speaking" | "speech_unavailable" | "waiting_for_executive";
 
 /** Progress through a turn. Carries no content: the reply arrives whole, after the guardrails have passed it. */
 export interface StatusEvent {
   type: "status";
   stage: Stage;
+}
+
+/** The person has used BUDGET_WARN_AT (80%) of this month's allowance. Sent once per conversation. */
+export interface UsageWarningEvent {
+  type: "usage_warning";
+  spent_usd: number;
+  budget_usd: number;
+  percent_used: number;
+}
+
+/** The allowance is used up: the message was not processed. */
+export interface BudgetExceededEvent {
+  type: "budget_exceeded";
+  spent_usd: number;
+  budget_usd: number;
+  resets_at: string;
 }
 
 export interface UserEvent {
@@ -81,11 +123,38 @@ export interface UserEvent {
   text: string;
 }
 
+/** The reply split into statements, each with the sources behind it. Built from the verified `text`, nothing added. */
+export interface StructuredReply {
+  kind: "answer" | "ask" | "confirm" | "recommendation" | "compare";
+  /** The first statement: a one-line headline. */
+  summary: string;
+  points: { text: string; sources: string[] }[];
+  /** Every source used, once; `points[].sources` refer to these ids. */
+  sources: Citation[];
+  /** Fixed text such as disclosures, kept apart from the answer. */
+  notes: string[];
+}
+
+/** How a reply was checked, for a trust badge. verified: every statement tied to a source and fact-checked.
+ *  engine: built from the recommendation/calculation engine's own figures. checked: screened by the guardrails, nothing to
+ *  cite. blocked: the draft failed the checks and a safe reply was shown instead. */
+export interface Verification {
+  level: "verified" | "engine" | "checked" | "blocked";
+  sources: number;
+  from_cache: boolean;
+  checks: ("guardrails" | "fact_check")[];
+}
+
 export interface AssistantEvent {
   type: "assistant";
   agent: AgentName;
+  /** The whole reply, source tags included. Use `structured` to render it as a list with source chips. */
   text: string;
   citations: Citation[];
+  structured: StructuredReply;
+  verification: Verification;
+  /** Up to three follow-up questions to show as chips; send one back as a `text` message. Empty while Sahaj is asking something. */
+  suggestions: string[];
   trace_id: string;
 }
 
@@ -97,7 +166,15 @@ export interface HandoffEvent {
   type: "handoff";
   reference: string;
   reason: HandoffReason;
+  case: CaseView;
 }
+
+export interface AgentJoinedEvent { type: "agent_joined"; case_id: string; agent: { name: string } }
+export interface AgentLeftEvent { type: "agent_left"; case_id: string }
+export interface AgentMessageEvent { type: "agent_message"; case_id: string; text: string; agent: { name: string }; at: string }
+export interface VideoKycScheduledEvent { type: "video_kyc_scheduled"; case_id: string; scheduled_for: string; meeting_url: string | null }
+/** The person finished (resolved) or the customer withdrew (cancelled): the AI answers again. */
+export interface HandoffClosedEvent { type: "handoff_closed"; case_id?: string; status: "resolved" | "cancelled"; outcome?: string; message?: string | null }
 
 export interface ErrorEvent {
   type: "error";
@@ -156,11 +233,18 @@ export type ServerEvent =
   | ConsentRequiredEvent
   | ConsentStatusEvent
   | StatusEvent
+  | UsageWarningEvent
+  | BudgetExceededEvent
   | CardEvent
   | UserEvent
   | AssistantEvent
   | DoneEvent
   | HandoffEvent
+  | AgentJoinedEvent
+  | AgentLeftEvent
+  | AgentMessageEvent
+  | VideoKycScheduledEvent
+  | HandoffClosedEvent
   | ErrorEvent;
 
 export type ServerEventType = ServerEvent["type"];

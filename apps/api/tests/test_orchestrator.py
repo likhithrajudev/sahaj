@@ -44,7 +44,7 @@ def stubs(monkeypatch):
         calls["classify"] += 1
         return state["intent"]
 
-    async def retrieve(domain, text, history, deep=False, scope=None):
+    async def retrieve(domain, text, history, deep=False, scope=None, user_id=None):
         calls["retrieve"] += 1
         return state["hits"]
 

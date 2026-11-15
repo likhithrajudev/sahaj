@@ -179,6 +179,7 @@ def test_remember_stores_only_the_filtered_note(monkeypatch):
     monkeypatch.setattr(memory, "chat", chat)
     monkeypatch.setattr(memory.store, "save", save)
     history = [{"role": "user", "content": "I want a term plan"}, {"role": "assistant", "content": "Sure."},
+               {"role": "user", "content": "and what about a health plan"}, {"role": "assistant", "content": "Yes."},
                {"role": "user", "content": "[gave personal details]"}]
     assert asyncio.run(memory.remember(USER.id, history)) is True
     assert saved == [(USER.id, "Wanted a term plan.", {})]   # the fact with a phone number was dropped

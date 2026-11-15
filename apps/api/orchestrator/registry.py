@@ -20,6 +20,8 @@ MAX_PER_USER = 5
 class QueueSocket:
     """Stands in for the WebSocket: events go to a queue the HTTP response drains. There is no audio over HTTP."""
 
+    consent_channel = "sse"   # recorded with consent decisions made over this connection
+
     def __init__(self, queue: asyncio.Queue):
         self.queue = queue
 
@@ -52,7 +54,7 @@ async def sweep() -> None:
         await _end(_entries.pop(sid))
 
 
-def acquire(user: User, session_id: Optional[str]) -> Tuple[Optional[Entry], bool]:
+def acquire(user: User, session_id: Optional[str], ip: Optional[str] = None) -> Tuple[Optional[Entry], bool]:
     """(entry, created). An unknown id, or one that belongs to someone else, gives (None, False)."""
     if session_id:
         entry = _entries.get(session_id)
@@ -65,7 +67,7 @@ def acquire(user: User, session_id: Optional[str]) -> Tuple[Optional[Entry], boo
         old = mine[0]
         _entries.pop(old.session.id, None)
         asyncio.create_task(_end(old))
-    entry = Entry(Session(QueueSocket(asyncio.Queue()), user), user.id)
+    entry = Entry(Session(QueueSocket(asyncio.Queue()), user, ip), user.id)
     _entries[entry.session.id] = entry
     return entry, True
 

@@ -2,7 +2,9 @@
 
     python tests/eval_retrieval.py
 
-Re-run after changing documents, the embedding model or RETRIEVAL_MIN_SIMILARITY. Add your own
+Re-run after changing documents, the embedding model or RETRIEVAL_MIN_SIMILARITY. By default each question first goes
+through the intent classifier, which gives the English search phrase production uses (this makes model calls);
+pass --raw to embed the questions as they are. Add your own
 questions (in the languages your users speak) with the clause that should answer each.
 """
 import asyncio
@@ -66,6 +68,10 @@ OFF_TOPIC = UNRELATED + UNANSWERABLE
 async def main() -> None:
     await store.open_pool()
     questions = [q for q, *_ in CASES] + [q for q, _ in OFF_TOPIC]
+    if "--raw" not in sys.argv:   # as in production: search with the classifier's English rendering of the question
+        from orchestrator.intent import classify
+        intents = await asyncio.gather(*(classify(q, None, False, None) for q in questions))
+        questions = [(i.search or "").strip() or q for i, q in zip(intents, questions)]
     vectors = await embed_queries(questions)
     top1 = top3 = kept = 0
     for (question, domain, want), vector in zip(CASES, vectors):

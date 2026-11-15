@@ -1,0 +1,49 @@
+groups:
+  - name: sahaj
+    rules:
+      - alert: SahajApiDown
+        expr: up{job="sahaj-api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "The Sahaj API is not answering Prometheus scrapes"}
+
+      - alert: SahajHighServerErrorRate
+        expr: |
+          sum(rate(sahaj_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(sahaj_http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "More than 5% of requests are failing with 5xx"}
+
+      - alert: SahajSlowTurns
+        expr: histogram_quantile(0.95, sum by (le) (rate(sahaj_turn_seconds_bucket[5m]))) > 12
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "p95 turn time is above 12 seconds"}
+
+      - alert: SahajTurnErrors
+        expr: |
+          sum(rate(sahaj_turns_total{outcome="error"}[5m]))
+            / clamp_min(sum(rate(sahaj_turns_total[5m])), 1e-9) > 0.1
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "More than 10% of turns end in an error (model, database or speech service)"}
+
+      - alert: SahajGuardrailBlocksHigh
+        expr: |
+          sum(rate(sahaj_guardrail_total{verdict!="pass"}[15m]))
+            / clamp_min(sum(rate(sahaj_guardrail_total[15m])), 1e-9) > 0.25
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "A quarter of replies are being blocked by the guardrails: check the model, prompts and knowledge base"}
+
+      - alert: SahajRefreshTokenReuse
+        expr: increase(sahaj_auth_events_total{event="refresh_reused"}[15m]) > 5
+        labels: {severity: warning}
+        annotations: {summary: "Refresh tokens are being reused: possible token theft or a client bug"}
+
+      - alert: SahajRateLimiting
+        expr: sum(rate(sahaj_rate_limited_total[5m])) > 1
+        for: 10m
+        labels: {severity: info}
+        annotations: {summary: "The gateway has been refusing more than one request a second for 10 minutes"}

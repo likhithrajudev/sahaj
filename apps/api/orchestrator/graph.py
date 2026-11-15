@@ -143,10 +143,25 @@ def route(state: State) -> str:
 
 
 # ---------------------------------------------------------------- handlers
+async def _document_user(session) -> Optional[str]:
+    """The user whose own documents may be searched, or None: they must have allowed it and have indexed something."""
+    user = getattr(session, "user", None)
+    if user is None or not consent.is_active(user.subject, "document_analysis"):
+        return None
+    try:
+        from storage import index
+        return user.id if await index.has_documents(user.id) else None
+    except Exception:  # no database: answer from the built-in knowledge base alone
+        return None
+
+
 async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope: Optional[List[str]]) -> Turn:
     """Retrieve, then answer from the clauses. A verified answer to the same question over the same clauses is reused."""
     text, language, deep = state["text"], state["language"], state["intent"].deep
-    hits = await retrieve(domain, text, session.history, deep, scope)
+    # Search with the classifier's English rendering of the question: the clauses are English, and cross-language
+    # similarity is weak (a Hindi question scored 0.1-0.2 against the right English clause, 0.6-0.7 once in English).
+    query = (state["intent"].search or "").strip() or text
+    hits = await retrieve(domain, query, session.history, deep, scope, user_id=await _document_user(session))
     sources = {h["key"]: h["text"] for h in hits}
     trace.add("retrieval", scoped_to=scope, clauses=[
         {"key": h["key"], "similarity": round(h["similarity"], 4), "sha256": h["sha256"]} for h in hits])
@@ -155,7 +170,7 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
     in_flow = bool(session.flow and session.flow.active)
     # A reply shaped by someone's memory is theirs alone, so it neither reads from nor goes into the shared cache.
     cacheable = (config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text, previous) and bool(sources)
-                 and not session.memory)
+                 and not session.memory and not any(h.get("personal") for h in hits))
     key = (domain, " ".join(text.lower().split()), (previous or "").lower(), language, deep,
            tuple(sorted((h["key"], h["sha256"]) for h in hits))) if cacheable else None  # clause hashes: edits invalidate
 

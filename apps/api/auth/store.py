@@ -1,6 +1,7 @@
 """Users and refresh tokens, in the same Postgres as the knowledge base."""
 import hashlib
 import logging
+import re
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from rag import store as rag_store
 log = logging.getLogger("sahaj.auth")
 
 PLATFORMS = ("web", "android", "ios")
-ROLES = ("user", "admin")
+ROLES = ("user", "executive", "admin")   # executive: a customer executive who takes over conversations from the desk
 
 
 class Unavailable(RuntimeError):
@@ -39,6 +40,10 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_login_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'executive', 'admin'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username);
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -74,6 +79,7 @@ class User:
     language: str
     platform: str
     role: str
+    username: Optional[str] = None   # the person's folder in file storage: stable, unique, derived from their email once
 
     @property
     def subject(self) -> str:
@@ -82,14 +88,14 @@ class User:
 
     def public(self) -> dict:
         return {"id": self.id, "email": self.email, "name": self.name, "picture": self.picture,
-                "language": self.language, "platform": self.platform, "role": self.role}
+                "language": self.language, "platform": self.platform, "role": self.role, "username": self.username}
 
 
 def _user(row: Optional[dict]) -> Optional[User]:
     if row is None:
         return None
     return User(id=str(row["id"]), email=row["email"], name=row["name"], picture=row["picture"],
-                language=row["language"], platform=row["platform"], role=row["role"])
+                language=row["language"], platform=row["platform"], role=row["role"], username=row.get("username"))
 
 
 def db():
@@ -103,6 +109,9 @@ async def init_schema() -> None:
     try:
         async with db().connection() as conn:
             await conn.execute(SCHEMA)
+            missing = await (await conn.execute("SELECT id, email FROM users WHERE username IS NULL")).fetchall()
+        for user_id, email in missing:   # accounts created before usernames existed
+            await assign_username(str(user_id), email)
     except Unavailable as e:
         log.warning("%s", e)
 
@@ -113,6 +122,45 @@ def _hash(raw: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ---------- usernames
+RESERVED_USERNAMES = {"users", "admin", "root", "system", "public", "private", "tmp", "api", "audit"}
+
+
+def username_base(email: str) -> str:
+    """The part of an email before the @, reduced to a safe folder name: lower-case letters, digits, dot, dash, underscore."""
+    base = re.sub(r"[^a-z0-9._-]+", "-", (email or "").split("@")[0].lower()).strip("._-")[:30]
+    return base if base and base not in RESERVED_USERNAMES else "user"
+
+
+async def assign_username(user_id: str, email: str) -> str:
+    """Give the user a username the first time one is needed: the email's local part, or that plus -2, -3, ... if it is
+    taken. It never changes afterwards, even if their email does, so their folder stays theirs."""
+    import psycopg
+    base = username_base(email)
+    async with db().connection() as conn:
+        for n in range(1, 60):
+            candidate = base if n == 1 else f"{base}-{n}"
+            try:
+                cur = await conn.execute("UPDATE users SET username = %s WHERE id = %s AND username IS NULL RETURNING username",
+                                         (candidate, user_id))
+            except psycopg.errors.UniqueViolation:
+                continue
+            row = await cur.fetchone()
+            if row:
+                return row[0]
+            cur = await conn.execute("SELECT username FROM users WHERE id = %s", (user_id,))   # someone else set it first
+            return (await cur.fetchone())[0]
+        candidate = f"{base}-{secrets.token_hex(3)}"
+        await conn.execute("UPDATE users SET username = %s WHERE id = %s AND username IS NULL", (candidate, user_id))
+        return candidate
+
+
+async def _with_username(user: Optional[User]) -> Optional[User]:
+    if user is not None and not user.username:
+        user.username = await assign_username(user.id, user.email)
+    return user
 
 
 # ---------- users
@@ -131,7 +179,8 @@ async def upsert_google_user(claims: dict, platform: str) -> User:
             {"sub": claims["sub"], "email": claims["email"], "name": claims.get("name"),
              "picture": claims.get("picture"), "platform": platform, "admin": admin},
         )
-        return _user(await cur.fetchone())
+        user = _user(await cur.fetchone())
+    return await _with_username(user)
 
 
 async def get_user(user_id: str) -> Optional[User]:
@@ -141,7 +190,8 @@ async def get_user(user_id: str) -> Optional[User]:
         return None
     async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        return _user(await cur.fetchone())
+        user = _user(await cur.fetchone())
+    return await _with_username(user)
 
 
 async def update_profile(user_id: str, fields: dict) -> Optional[User]:

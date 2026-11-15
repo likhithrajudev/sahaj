@@ -2,7 +2,7 @@
 
 FastAPI backend: voice WebSocket, STT, RAG over `knowledge/`, insurance/loan agents, trust layer (consent, PII, guardrails, audit).
 
-Run everything from this directory (paths such as `static/`, `.env.local` and `ledger.db` are relative to it).
+Run everything from this directory (paths such as `.env.local` and `ledger.db` are relative to it).
 
 ```bash
 cd apps/api

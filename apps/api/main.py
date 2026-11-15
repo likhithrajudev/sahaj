@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from rag import store
 from rag.embeddings import warm_up
 from routers import audit, stt, voice
@@ -24,7 +23,3 @@ app.include_router(audit.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# Test page at http://127.0.0.1:8000/ (mounted last so it doesn't shadow the routes)
-app.mount("/", StaticFiles(directory="static", html=True))

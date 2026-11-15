@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => {
           orientation: "portrait",
           background_color: "#004299", // the splash colour while the app starts
           theme_color: "#F5F5F5",
-          // Rendered from the Anek स mark (committed PNGs: no Devanagari font is needed at build time)
+          // Rendered from the logo's geometry (docs/design/logo-1c) in the brand token colours
           icons: [
             { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },
             { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },

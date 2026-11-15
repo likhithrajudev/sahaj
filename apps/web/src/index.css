@@ -53,6 +53,9 @@
   --toast-ink: #ffffff;
   --bubble: var(--primary);
   --on-bubble: #ffffff;
+  /* logo (docs/design/logo-1c, colours mapped to the brand tokens) */
+  --logo-bar: var(--brand-action);
+  --logo-word: var(--brand-navy);
   --scrim: rgb(40 48 60 / 0.45);
   --shadow-dock: 0 -10px 28px -18px rgb(40 40 40 / 0.25);
   --shadow-sheet: 0 -12px 40px -16px rgb(16 24 40 / 0.3);
@@ -97,6 +100,8 @@
   --toast-ink: #0b1526;
   --bubble: #1e3f68;
   --on-bubble: #edf3fc;
+  --logo-bar: #ffffff;
+  --logo-word: var(--ink);
   --scrim: rgb(2 8 18 / 0.6);
   color-scheme: dark;
 }

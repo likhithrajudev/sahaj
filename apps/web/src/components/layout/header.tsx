@@ -27,7 +27,7 @@ export function Header() {
       <div className="flex h-14 items-center gap-2.5 pl-[18px] pr-2 lg:h-16 lg:px-7">
         <LogoMark size={34} />
         <div className="flex min-w-0 flex-col gap-px lg:flex-row lg:items-center lg:gap-5">
-          <span className="text-[19px] font-bold leading-5 tracking-[-0.01em]">Sahaj</span>
+          <span className="text-[19px] font-bold leading-5 tracking-[-0.025em] text-[var(--logo-word)]">Sahaj</span>
           <span className="flex items-center gap-[5px] text-xs font-medium leading-[14px] text-ink-2 lg:text-sm" aria-live="polite">
             <span className="size-[7px] rounded-full" style={{ background: dot }} />
             {t(label)}

@@ -18,7 +18,7 @@ lives in `docs/design/<export>/` and is git-ignored; open its `Sahaj Design v2.d
 | `src/lib/audio/` | Recorder (WebM or iPhone MP4, level meter, 30 s limit) and iPhone-safe playback |
 | `mock/server.mjs` | Mock backend speaking the real protocol, scripted through every design state |
 | `scripts/icons.sh` | Rebuilds the self-hosted Material Symbols subset when you use a new icon |
-| `public/*.png` | App icons rendered from the Anek स mark (committed; no font needed at build time) |
+| `src/components/brand/logo.tsx`, `public/` | Logo ("voice bars", docs/design/logo-1c): exact design geometry, colours mapped to `--brand-*` tokens. Icons and `favicon.svg` are rendered from it |
 
 Types come from `@sahaj/contracts`. The live conversation goes through the socket and the Zustand store;
 TanStack Query is only for REST calls. Below 1024 px the layout is the phone design; from 1024 px cards open in a

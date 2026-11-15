@@ -1,0 +1,647 @@
+{
+ "sample": true,
+ "note": "FICTIONAL insurers and plans for development. Not real products, premiums or claim ratios.",
+ "products": [
+  {
+   "id": "term-orchid-pure",
+   "goal": "term",
+   "name": "Orchid Pure Term (SAMPLE)",
+   "insurer": "Orchid Life (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     25
+    ],
+    [
+     26,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ],
+    [
+     56,
+     60
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 60,
+   "cover_min": 2500000,
+   "cover_max": 100000000,
+   "cover_step": 500000,
+   "max_maturity_age": 75,
+   "rate_per_crore": {
+    "non_smoker": [
+     6200,
+     7600,
+     9800,
+     14200,
+     21500,
+     33800,
+     54500,
+     86000
+    ],
+    "smoker": [
+     10850,
+     13300,
+     17150,
+     24850,
+     37620,
+     59150,
+     95380,
+     150500
+    ]
+   },
+   "claim_settlement_ratio": 97.8,
+   "riders_included": 1,
+   "rider_text": "waiver of premium on disability is included; critical illness cover is not available",
+   "suicide_exclusion_months": 12,
+   "grace_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "term-banyan-flex",
+   "goal": "term",
+   "name": "Banyan Flex Term (SAMPLE)",
+   "insurer": "Banyan Life (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     25
+    ],
+    [
+     26,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ],
+    [
+     56,
+     60
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 60,
+   "cover_min": 5000000,
+   "cover_max": 50000000,
+   "cover_step": 500000,
+   "max_maturity_age": 85,
+   "rate_per_crore": {
+    "non_smoker": [
+     5900,
+     7300,
+     10200,
+     15100,
+     23500,
+     36500,
+     57800,
+     91500
+    ],
+    "smoker": [
+     10320,
+     12780,
+     17850,
+     26420,
+     41120,
+     63880,
+     101150,
+     160120
+    ]
+   },
+   "claim_settlement_ratio": 98.4,
+   "riders_included": 2,
+   "rider_text": "waiver of premium on disability and a critical illness benefit are both included",
+   "suicide_exclusion_months": 12,
+   "grace_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "wl-orchid-legacy",
+   "goal": "whole_life",
+   "name": "Orchid Legacy Whole Life (SAMPLE)",
+   "insurer": "Orchid Life (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     25
+    ],
+    [
+     26,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 55,
+   "cover_min": 1000000,
+   "cover_max": 10000000,
+   "cover_step": 500000,
+   "rate_per_10_lakh": [
+    14500,
+    16800,
+    19800,
+    23800,
+    29500,
+    37500,
+    48000
+   ],
+   "premium_paying_term_years": 20,
+   "coverage_till_age": 99,
+   "claim_settlement_ratio": 98.1,
+   "kind": "participating",
+   "kind_text": "it takes part in the insurer's profits through bonuses, which are not guaranteed",
+   "surrender_after_years": 3,
+   "grace_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "wl-banyan-secure",
+   "goal": "whole_life",
+   "name": "Banyan Secure Whole Life (SAMPLE)",
+   "insurer": "Banyan Life (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     25
+    ],
+    [
+     26,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 55,
+   "cover_min": 500000,
+   "cover_max": 5000000,
+   "cover_step": 500000,
+   "rate_per_10_lakh": [
+    11800,
+    13600,
+    16100,
+    19400,
+    24100,
+    30800,
+    39500
+   ],
+   "premium_paying_term_years": 25,
+   "coverage_till_age": 99,
+   "claim_settlement_ratio": 97.2,
+   "kind": "non-participating",
+   "kind_text": "it pays only the guaranteed sum assured and does not take part in profits",
+   "surrender_after_years": 3,
+   "grace_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "health-lotus-care",
+   "goal": "health",
+   "name": "Lotus Care (SAMPLE)",
+   "insurer": "Lotus Health (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ],
+    [
+     56,
+     60
+    ],
+    [
+     61,
+     65
+    ],
+    [
+     66,
+     70
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 65,
+   "si_options": [
+    500000,
+    1000000,
+    2500000,
+    5000000
+   ],
+   "premium_by_band": {
+    "18-30": {
+     "500000": 6200,
+     "1000000": 8990,
+     "2500000": 13640,
+     "5000000": 18600
+    },
+    "31-35": {
+     "500000": 6940,
+     "1000000": 10070,
+     "2500000": 15280,
+     "5000000": 20830
+    },
+    "36-40": {
+     "500000": 8060,
+     "1000000": 11690,
+     "2500000": 17730,
+     "5000000": 24180
+    },
+    "41-45": {
+     "500000": 9920,
+     "1000000": 14380,
+     "2500000": 21820,
+     "5000000": 29760
+    },
+    "46-50": {
+     "500000": 12400,
+     "1000000": 17980,
+     "2500000": 27280,
+     "5000000": 37200
+    },
+    "51-55": {
+     "500000": 16120,
+     "1000000": 23370,
+     "2500000": 35460,
+     "5000000": 48360
+    },
+    "56-60": {
+     "500000": 21080,
+     "1000000": 30570,
+     "2500000": 46380,
+     "5000000": 63240
+    },
+    "61-65": {
+     "500000": 27900,
+     "1000000": 40460,
+     "2500000": 61380,
+     "5000000": 83700
+    },
+    "66-70": {
+     "500000": 37200,
+     "1000000": 53940,
+     "2500000": 81840,
+     "5000000": 111600
+    }
+   },
+   "floater_factor": {
+    "1": 1.0,
+    "2": 1.65,
+    "3": 1.95,
+    "4": 2.2
+   },
+   "copay_percent": 0,
+   "room_rent": "single private room",
+   "initial_waiting_days": 30,
+   "ped_waiting_months": 36,
+   "specific_waiting_months": 24,
+   "maternity": null,
+   "restoration": true,
+   "no_claim_bonus": "10 percent per claim-free year, up to 50 percent",
+   "network_hospitals": 9000,
+   "claim_settlement_ratio": 95.8,
+   "cashless_planned_hours": 48,
+   "cashless_emergency_hours": 24,
+   "reimbursement_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "health-neem-essential",
+   "goal": "health",
+   "name": "Neem Essential (SAMPLE)",
+   "insurer": "Neem Health (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ],
+    [
+     56,
+     60
+    ],
+    [
+     61,
+     65
+    ],
+    [
+     66,
+     70
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 65,
+   "si_options": [
+    500000,
+    1000000,
+    2500000
+   ],
+   "premium_by_band": {
+    "18-30": {
+     "500000": 4800,
+     "1000000": 6720,
+     "2500000": 9600
+    },
+    "31-35": {
+     "500000": 5280,
+     "1000000": 7390,
+     "2500000": 10560
+    },
+    "36-40": {
+     "500000": 6000,
+     "1000000": 8400,
+     "2500000": 12000
+    },
+    "41-45": {
+     "500000": 7200,
+     "1000000": 10080,
+     "2500000": 14400
+    },
+    "46-50": {
+     "500000": 9120,
+     "1000000": 12770,
+     "2500000": 18240
+    },
+    "51-55": {
+     "500000": 11520,
+     "1000000": 16130,
+     "2500000": 23040
+    },
+    "56-60": {
+     "500000": 14880,
+     "1000000": 20830,
+     "2500000": 29760
+    },
+    "61-65": {
+     "500000": 19200,
+     "1000000": 26880,
+     "2500000": 38400
+    },
+    "66-70": {
+     "500000": 24960,
+     "1000000": 34940,
+     "2500000": 49920
+    }
+   },
+   "floater_factor": {
+    "1": 1.0,
+    "2": 1.7,
+    "3": 2.0,
+    "4": 2.3
+   },
+   "copay_percent": 10,
+   "room_rent": "limited to 1 percent of the sum insured per day",
+   "initial_waiting_days": 30,
+   "ped_waiting_months": 48,
+   "specific_waiting_months": 24,
+   "maternity": null,
+   "restoration": false,
+   "no_claim_bonus": "5 percent per claim-free year, up to 25 percent",
+   "network_hospitals": 6500,
+   "claim_settlement_ratio": 94.5,
+   "cashless_planned_hours": 48,
+   "cashless_emergency_hours": 24,
+   "reimbursement_days": 30,
+   "free_look_days": 15
+  },
+  {
+   "id": "health-peepal-family",
+   "goal": "health",
+   "name": "Peepal Family Shield (SAMPLE)",
+   "insurer": "Peepal Health (SAMPLE)",
+   "age_bands": [
+    [
+     18,
+     30
+    ],
+    [
+     31,
+     35
+    ],
+    [
+     36,
+     40
+    ],
+    [
+     41,
+     45
+    ],
+    [
+     46,
+     50
+    ],
+    [
+     51,
+     55
+    ],
+    [
+     56,
+     60
+    ],
+    [
+     61,
+     65
+    ],
+    [
+     66,
+     70
+    ]
+   ],
+   "age_min": 18,
+   "age_max": 65,
+   "si_options": [
+    500000,
+    1000000,
+    2500000,
+    5000000
+   ],
+   "premium_by_band": {
+    "18-30": {
+     "500000": 7900,
+     "1000000": 11850,
+     "2500000": 18170,
+     "5000000": 25280
+    },
+    "31-35": {
+     "500000": 8690,
+     "1000000": 13040,
+     "2500000": 19990,
+     "5000000": 27810
+    },
+    "36-40": {
+     "500000": 10110,
+     "1000000": 15170,
+     "2500000": 23260,
+     "5000000": 32360
+    },
+    "41-45": {
+     "500000": 12240,
+     "1000000": 18370,
+     "2500000": 28160,
+     "5000000": 39180
+    },
+    "46-50": {
+     "500000": 15400,
+     "1000000": 23110,
+     "2500000": 35430,
+     "5000000": 49300
+    },
+    "51-55": {
+     "500000": 19750,
+     "1000000": 29620,
+     "2500000": 45420,
+     "5000000": 63200
+    },
+    "56-60": {
+     "500000": 26070,
+     "1000000": 39100,
+     "2500000": 59960,
+     "5000000": 83420
+    },
+    "61-65": {
+     "500000": 33970,
+     "1000000": 50960,
+     "2500000": 78130,
+     "5000000": 108700
+    },
+    "66-70": {
+     "500000": 45820,
+     "1000000": 68730,
+     "2500000": 105390,
+     "5000000": 146620
+    }
+   },
+   "floater_factor": {
+    "1": 1.0,
+    "2": 1.6,
+    "3": 1.85,
+    "4": 2.05
+   },
+   "copay_percent": 0,
+   "room_rent": "no limit on room category",
+   "initial_waiting_days": 30,
+   "ped_waiting_months": 24,
+   "specific_waiting_months": 24,
+   "maternity": {
+    "limit": 50000,
+    "waiting_months": 36
+   },
+   "restoration": true,
+   "no_claim_bonus": "10 percent per claim-free year, up to 100 percent",
+   "network_hospitals": 12000,
+   "claim_settlement_ratio": 96.2,
+   "cashless_planned_hours": 48,
+   "cashless_emergency_hours": 24,
+   "reimbursement_days": 30,
+   "free_look_days": 15
+  }
+ ]
+}

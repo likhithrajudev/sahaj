@@ -1,0 +1,15 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18  # Postgres 18 with the pgvector extension
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sahaj
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+  

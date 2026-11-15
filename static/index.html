@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sahaj</title>
+<button id="talk">Hold to talk</button>
+<button id="human">Talk to a human</button>
+<pre id="log"></pre>
+
+<script type="module">
+  const log = (t) => (document.getElementById("log").textContent += t + "\n");
+  const ws = new WebSocket(`ws://${location.host}/ws/voice`);
+  const send = (obj) => ws.send(JSON.stringify(obj));
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  let chunks = [], parts = [], rec;
+
+  ws.onmessage = ({ data }) => {
+    if (data instanceof Blob) return chunks.push(data);
+    const m = JSON.parse(data);
+    if (m.type === "consent_required") {
+      send({ type: "consent", purpose: m.purpose, granted: confirm(m.text) });
+    }
+    if (m.type === "user") log("You: " + m.text);
+    if (m.type === "assistant") {
+      log(`Sahaj (${m.agent}): ${m.text}`);
+      m.citations.forEach((c) => log(`   [${c.id}] ${c.text}`));
+    }
+    if (m.type === "handoff") log(`>> Handed to a human. Reference ${m.reference}`);
+    if (m.type === "error") log("! " + m.message);
+    if (m.type === "done" && chunks.length) {  // no chunks = text-only reply
+      new Audio(URL.createObjectURL(new Blob(chunks, { type: "audio/mpeg" }))).play();
+    }
+    if (m.type === "done" || m.type === "error") chunks = [];
+  };
+
+  document.getElementById("human").onclick = () => send({ type: "handoff" });
+
+  const talk = document.getElementById("talk");
+  talk.onpointerdown = () => {
+    parts = [];
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = (e) => parts.push(e.data);
+    rec.onstop = async () => ws.send(await new Blob(parts).arrayBuffer());
+    rec.start();
+  };
+  talk.onpointerup = () => rec.stop();
+</script>

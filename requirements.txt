@@ -1,0 +1,20 @@
+# Fast API Dependencies --> already has the httpx and websocket
+fastapi[standard] 
+
+# Database migrations
+alembic
+
+# Environment Variables
+python-dotenv
+
+# Knowledge base: Postgres + pgvector, local multilingual embeddings
+psycopg[binary,pool]
+pgvector
+fastembed
+
+# Orchestration: LangGraph graph, LangChain chat-model interface, prompts and caching
+langgraph
+langchain-core
+
+# Tests
+pytest

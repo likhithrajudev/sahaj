@@ -1,0 +1,22 @@
+# Secrets (keep .env.example committed)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+.venv-*/
+venv/
+
+# Caches
+.cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

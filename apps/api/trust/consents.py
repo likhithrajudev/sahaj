@@ -46,7 +46,15 @@ async def _erase(user, purpose: str) -> Dict[str, int]:
     if purpose == "financial_application":
         from financial import store as financial_store
         return {"application_references": await financial_store.forget(user.id, ("loan_application", "insurance_application"))}
+    if purpose == "financial_profile":
+        from financial import inventory
+        return {"financial_inventory_items": await inventory.forget(user.id)}
     return {}
+
+
+def _ever_granted(subject: str, purpose: str) -> bool:
+    return any(entry["payload"].get("purpose") == purpose and entry["payload"].get("event") == "granted"
+               for entry in consent.ledger.entries(subject=subject, kind="consent"))
 
 
 async def withdraw(user, purpose: str, *, channel: str, ip: Optional[str] = None) -> Dict:
@@ -54,6 +62,12 @@ async def withdraw(user, purpose: str, *, channel: str, ip: Optional[str] = None
     withdrawn, erased, failures = [], {}, []
     for p in [*consent.dependents(purpose), purpose]:
         if not consent.is_active(user.subject, p):
+            if p == "financial_profile" and _ever_granted(user.subject, p):
+                try:
+                    erased.update(await _erase(user, p))
+                except Exception as e:
+                    log.error("Erasure after withdrawing %s failed for a user: %s", p, e)
+                    failures.append(p)
             continue
         consent.revoke(user.subject, p, channel=channel, meta={"client": client_ref(ip)})
         withdrawn.append(p)
@@ -83,6 +97,9 @@ async def set_consent(user, purpose: str, granted: bool, *, channel: str, versio
     needs = consent.META[purpose]["requires"]
     if needs and not consent.is_active(user.subject, needs):
         raise ConsentError("requires", f"'{purpose}' needs '{needs}' consent first.", needs)
+    if purpose == "financial_profile" and not consent.is_active(user.subject, purpose):
+        # An expired or stale grant must not make old records reappear when the person grants again.
+        await _erase(user, purpose)
     consent.grant(user.subject, purpose, channel=channel,
                   meta={"client": client_ref(ip), **(details or {})}, version=version)
     return {"purpose": purpose, "granted": True, "withdrawn": [], "erased": {}}

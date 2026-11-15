@@ -6,7 +6,7 @@
 import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
-export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records" | "video_kyc" | "financial_application" | "credit_bureau";
+export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records" | "video_kyc" | "financial_application" | "credit_bureau" | "financial_profile";
 export type AgentName = "insurance" | "loan" | "general";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
 

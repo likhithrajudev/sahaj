@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Optional
@@ -38,6 +39,12 @@ MAX_TEXT = 2000    # characters in one typed message
 DECIDING = {"continue_active", "classify", "guard", "handoff"}
 
 
+def _inventory_request(text: str) -> bool:
+    action = re.search(r"\b(track|add|save|update|record|remember|manage)\b|रख|जोड़|अपडेट|सेव|दर्ज|रिकॉर्ड", text, re.I)
+    asset = re.search(r"\b(credit.?cards?|cards?|em[ií]s?|loans?|inventory|due dates?)\b|क्रेडिट.?कार्ड|कार्ड|ईएमआई|लोन|किस्त", text, re.I)
+    return bool(action and asset and not re.search(r"\bloan application\b", text, re.I))
+
+
 class Session:
     """One conversation. The LangGraph orchestrator (orchestrator/graph.py) decides what to say; this class handles
     the connection: consent, speech in and out, history, and handing over to a person."""
@@ -67,6 +74,8 @@ class Session:
         self.handoff_ref = None
         self.flow: Optional[AdviceFlow] = None   # the needs analysis, if one is under way
         self.calc: Optional[LoanCalc] = None     # a loan calculation, if one is under way
+        self.inventory_flow = None
+        self.pending_inventory = None
         self.pending = None                      # (text, language) waiting for the person's consent to analyse
         self.focus = []                          # plans just recommended or compared: what "the first one" means
 
@@ -188,6 +197,16 @@ class Session:
             text, lang = self.pending
             self.pending = None
             await self._guarded(lambda trace: self._respond(text, lang, trace))
+        if granted and purpose == "conversation" and self.pending_inventory:
+            await self.ws.send_json({"type": "consent_required", **consent.required("financial_profile")})
+        if not granted and purpose == "financial_profile":
+            self.pending_inventory = None
+        if not granted and purpose == "conversation":
+            self.pending_inventory = None
+        if granted and purpose == "financial_profile" and self.pending_inventory:
+            action, lang = self.pending_inventory
+            self.pending_inventory = None
+            await self._guarded(lambda trace: self._inventory_action(action, lang, trace))
 
     # ---------- inbound: one typed message ----------
     async def on_text(self, text: str, language: Optional[str] = None, speak_reply: bool = False) -> None:
@@ -206,12 +225,25 @@ class Session:
 
     async def _typed(self, text: str, lang: str, trace: Trace) -> None:
         masked = self.vault.mask(normalise_digits(text.strip()))
-        trace.add("text", language=lang, text=masked)
+        sensitive = bool(self.inventory_flow and self.inventory_flow.active)
+        inventory_request = _inventory_request(masked)
+        trace.add("text", language=lang, text="[withheld: financial inventory details]" if sensitive or inventory_request else masked)
         await self.ws.send_json({"type": "user", "text": masked})
         command = commands.parse(masked)
         if command:
             return await self._run_command(command, lang, trace)
-        if not await self._escalated(masked, lang, trace):
+        self.pending_inventory = None
+        if inventory_request:
+            if consent.is_active(self.user.subject, "financial_profile"):
+                turn = await self._inventory_action("update", lang, trace, initial_request=masked)
+            else:
+                self.pending_inventory = ("update", lang)
+                turn = Turn(text="Before I store card or EMI details, please review the financial inventory permission on your screen.",
+                            kind="ask", agent="general", judge=False, prechecked=True, sensitive_input=True,
+                            request_consent="financial_profile")
+            trace.add("command", name="/inventory")
+            return await self._deliver(turn, None, text, lang, trace)
+        if sensitive or not await self._escalated(masked, lang, trace):
             await self._respond(masked, lang, trace)
 
     async def _run_command(self, command: commands.Command, lang: str, trace: Trace) -> None:
@@ -223,7 +255,8 @@ class Session:
             reply = "Unknown shortcut. Use /help to see the available text commands."
         elif command.name == "/help":
             reply = "Text shortcuts: /usage shows this month's usage and budget; /clear starts a fresh conversation; " \
-                    "/language lists supported languages; /language <code> changes your preferred language."
+                    "/language lists supported languages; /language <code> changes your preferred language; " \
+                    "/inventory adds or updates your cards and EMIs; /inventory show views them; /cancel cancels an update."
         elif command.name == "/language":
             if not command.argument:
                 reply = f"Supported languages: {names}"
@@ -240,9 +273,38 @@ class Session:
             self.last_intent = None
             self.focus = []
             self.flow = self.calc = self.pending = None
+            self.inventory_flow = self.pending_inventory = None
             self.memory = None
             self.clarifications = self.failures = 0
             reply = "Conversation context cleared."
+        elif command.name == "/cancel":
+            self.inventory_flow = None
+            self.pending_inventory = None
+            reply = "The current inventory update was cancelled. Nothing was saved."
+        elif command.name == "/inventory":
+            if command.argument.lower() not in ("", "show"):
+                reply = "Use /inventory to add or update cards and EMIs, or /inventory show to view saved items."
+                turn = Turn(text=reply, kind="command", agent="general", judge=False, prechecked=True)
+                trace.add("command", name="/inventory")
+                return await self._deliver(turn, None, command.name, lang, trace)
+            action = "show" if command.argument.lower() == "show" else "update"
+            if not consent.is_active(self.user.subject, "conversation"):
+                self.pending_inventory = (action, lang)
+                turn = Turn(text="Please review the conversation permission first. I will then ask separately before saving financial details.",
+                            kind="ask", agent="general", judge=False, prechecked=True, request_consent="conversation")
+                trace.add("command", name=command.name)
+                return await self._deliver(turn, None, command.name, lang, trace)
+            if not consent.is_active(self.user.subject, "financial_profile"):
+                self.pending_inventory = (action, lang)
+                from financial import inventory as inventory_store
+                await inventory_store.forget(self.user.id)
+                turn = Turn(text="Please review the financial inventory permission on your screen before I continue.",
+                            kind="ask", agent="general", judge=False, prechecked=True, request_consent="financial_profile")
+            else:
+                self.pending_inventory = None
+                turn = await self._inventory_action(action, lang, trace)
+            trace.add("command", name=command.name)
+            return await self._deliver(turn, None, command.name, lang, trace)
         else:
             try:
                 summary = await usage_ledger.summary(self.user.id)
@@ -257,7 +319,21 @@ class Session:
                 reply = "Usage is temporarily unavailable. Try again shortly."
         trace.add("command", name=command.name if command.name in commands.COMMANDS else "unknown")
         turn = Turn(text=reply, kind="command", agent="general", judge=False, prechecked=True)
-        await self._deliver(turn, None, command.name, lang, trace, persist=command.name not in ("/usage", "/help", "/language", "/clear"))
+        await self._deliver(turn, None, command.name, lang, trace, persist=command.name not in ("/usage", "/help", "/language", "/clear", "/cancel"))
+
+    async def _inventory_action(self, action: str, lang: str, trace: Trace, initial_request: Optional[str] = None) -> Turn:
+        from financial import inventory as inventory_store
+        if not consent.is_active(self.user.subject, "financial_profile"):
+            await inventory_store.forget(self.user.id)
+            return Turn(text="Please review the financial inventory permission on your screen before I continue.",
+                        kind="ask", agent="general", judge=False, prechecked=True, request_consent="financial_profile")
+        if action == "show":
+            items = await inventory_store.list_for(self.user.id)
+            return Turn(text="Here is your saved financial inventory.", kind="command", agent="general", judge=False,
+                        prechecked=True, card={"type": "financial_inventory", "items": items})
+        from financial.inventory_flow import InventoryFlow
+        self.inventory_flow, turn = await InventoryFlow.begin(self.user.id, self.user.subject, lang, initial_request)
+        return turn
 
     # ---------- inbound: one recorded utterance ----------
     async def on_audio(self, audio: bytes) -> None:
@@ -305,11 +381,12 @@ class Session:
         telemetry.record_speech("stt", seconds, pricing.stt_cost(seconds))
         lang = resolve_language(stt["language_code"])
         text = self.vault.mask(normalise_digits(stt["transcript"].strip()))
-        trace.add("stt", language=lang, transcript=text)
+        inventory_active = bool(self.inventory_flow and self.inventory_flow.active)
+        trace.add("stt", language=lang, transcript="[withheld: financial inventory details]" if inventory_active else text)
         if not text:
             return await self._error("I didn't catch that.")
         await self.ws.send_json({"type": "user", "text": text})
-        if not await self._escalated(text, lang, trace):
+        if inventory_active or not await self._escalated(text, lang, trace):
             await self._respond(text, lang, trace)
 
     # ---------- deciding what to say: the graph ----------
@@ -322,7 +399,8 @@ class Session:
 
     async def _respond(self, text: str, lang: str, trace: Trace) -> None:
         await self._status("thinking")
-        await self._recall(text)
+        if not (self.inventory_flow and self.inventory_flow.active):
+            await self._recall(text)
         result = None
         async for mode, chunk in GRAPH.astream(
             {"text": text, "lang": lang, "language": language_name(lang), "path": []},
@@ -425,7 +503,10 @@ class Session:
             self.memory = None
         if not consent.is_active(subject, "needs_analysis"):
             self.flow = self.pending = None
+        if not consent.is_active(subject, "financial_profile"):
+            self.inventory_flow = None
         if not consent.is_active(subject, "conversation"):
+            self.pending_inventory = None
             if self.history:
                 import asyncio
                 asyncio.get_event_loop().create_task(working.drop(self.user, self.id))   # nothing left to resume

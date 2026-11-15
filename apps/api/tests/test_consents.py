@@ -125,6 +125,22 @@ def test_withdrawing_what_was_never_granted_changes_nothing(erased):
     assert decide("memory", False)["withdrawn"] == [] and erased == [] and consent.history(USER.subject) == []
 
 
+def test_financial_profile_grant_and_withdrawal_purge_private_inventory(monkeypatch):
+    calls = []
+
+    async def erase(user, purpose):
+        calls.append((user.id, purpose))
+        return {"financial_inventory_items": 2}
+
+    monkeypatch.setattr(consents, "_erase", erase)
+    decide("conversation", True)
+    decide("financial_profile", True)
+    result = decide("financial_profile", False)
+    assert result["erased"]["financial_inventory_items"] == 2
+    assert calls == [(USER.id, "financial_profile"), (USER.id, "financial_profile")]
+    assert not consent.is_active(USER.subject, "financial_profile")
+
+
 def test_a_failed_erasure_is_reported_but_the_withdrawal_stands(monkeypatch):
     async def boom(user, purpose):
         raise OSError("storage down")

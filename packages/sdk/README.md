@@ -50,7 +50,9 @@ Build the distributable with `pnpm --filter @sahaj/sdk build`. The package metad
 
 ## Insurance and lending workflows
 
-The client also exposes `searchWeb`, `calculateEmi`, `calculatePrepayment`, `files`, `uploadFile`, `downloadFile`, `deleteFile`, `checkCredit`, `loanOffers`, `applyForLoan`, `insuranceQuotes`, `purchaseInsurance`, and `financialEvents`. File uploads use `multipart/form-data`; only the signed-in owner's inventory and file content are returned. PDF, PNG and JPEG content can be indexed for questions after the separate document-analysis consent; office documents and UTF-8 text are parsed locally after the same consent.
+The client also exposes `searchWeb`, `calculateEmi`, `calculatePrepayment`, `financialInventory`, `setFinancialInventoryConsent`, `replaceFinancialInventory`, `deleteFinancialInventoryItem`, `files`, `uploadFile`, `downloadFile`, `deleteFile`, `checkCredit`, `loanOffers`, `applyForLoan`, `insuranceQuotes`, `purchaseInsurance`, and `financialEvents`. File uploads use `multipart/form-data`; only the signed-in owner's inventory and file content are returned. PDF, PNG and JPEG content can be indexed for questions after the separate document-analysis consent; office documents and UTF-8 text are parsed locally after the same consent.
+
+The financial inventory is separate from lender integrations. After granting `financial_profile` consent, a person can use the typed `/inventory` shortcut or ask in plain language to track cards and EMIs. They review the parsed items and confirm saving. Only the last four card digits are permitted; full card numbers and security codes must not be entered. The API returns no inventory when consent is inactive and withdrawing that consent erases saved items.
 
 Video KYC helpers are `setVideoKycConsent()`, `requestVideoKyc()`, `cases()`, `cancelCase()` and (for an executive/admin client) `scheduleVideoKyc()`. Sahaj records the request and schedules an appointment; an authorised official of the regulated provider must conduct and verify the session. Sahaj itself does not conduct or verify it.
 

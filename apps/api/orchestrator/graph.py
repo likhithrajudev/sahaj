@@ -54,6 +54,7 @@ ROUTES = {
     "insurance_web_search": "insurance_web_search",
     "loan_web_search": "loan_web_search",
     "insurance_purchase": "financial_action", "loan_application": "financial_action", "credit_check": "financial_action",
+    "financial_overview": "financial_overview",
 }
 
 
@@ -107,6 +108,12 @@ async def continue_active(state: State, config: RunnableConfig):
     """A reply mid-analysis is usually an answer to the question just asked, so the active conversation reads it first."""
     session, trace = _ctx(config)
     turn, intent = None, None
+    inventory_flow = getattr(session, "inventory_flow", None)
+    if inventory_flow and inventory_flow.active:
+        turn = await inventory_flow.handle(state["text"], state["lang"])
+        if not inventory_flow.active:
+            session.inventory_flow = None
+        return {"turn": turn}
     if session.flow and session.flow.active:
         turn = await session.flow.handle(state["text"], state["lang"], state["language"], session._can_advise(), trace)
         intent = "insurance_advice"
@@ -367,6 +374,28 @@ async def financial_action(state: State, config: RunnableConfig):
 
 
 @node
+async def financial_overview(state: State, config: RunnableConfig):
+    session, _ = _ctx(config)
+    if not consent.is_active(session.user.subject, "financial_profile"):
+        from financial import inventory
+        await inventory.forget(session.user.id)
+        return {"turn": Turn(text="Please review the financial inventory permission on your screen. Then use /inventory to add your cards and EMIs.",
+                              kind="ask", agent="general", judge=False, prechecked=True,
+                              request_consent="financial_profile")}
+    from financial import inventory
+    items = await inventory.list_for(session.user.id)
+    total_card_balance = sum(int(item["details"].get("outstanding_balance", 0)) for item in items
+                             if item["type"] == "credit_card")
+    total_emi = sum(int(item["details"].get("monthly_emi", 0)) for item in items if item["type"] == "loan")
+    text = "Here is your saved financial inventory. Use /inventory to add or update details."
+    if not items:
+        text = "Your saved financial inventory is empty. Use /inventory to add your cards and EMIs."
+    return {"turn": Turn(text=text, kind="confirm", agent="general", judge=False, prechecked=True,
+                         card={"type": "financial_inventory_summary", "currency": "INR", "items": items,
+                               "totals": {"credit_card_outstanding": total_card_balance, "monthly_emi": total_emi}})}
+
+
+@node
 async def calculator(state: State, config: RunnableConfig):
     session, _ = _ctx(config)
     if not (session.calc and session.calc.active):
@@ -430,12 +459,13 @@ async def guard(state: State, config: RunnableConfig):
 def build() -> StateGraph:
     graph = StateGraph(State)
     for fn in (continue_active, classify, insurance_rag, advice, compare, loan_rag, calculator, decline,
-               greeting, clarify, handoff, guard, fine_print, insurance_web_search, loan_web_search, financial_action):
+               greeting, clarify, handoff, guard, fine_print, insurance_web_search, loan_web_search, financial_action,
+               financial_overview):
         graph.add_node(fn.__name__, fn)
     graph.add_edge(START, "continue_active")
     graph.add_conditional_edges("continue_active", after_continue, {"guard": "guard", "classify": "classify"})
     graph.add_conditional_edges("classify", route, {name: name for name in set(ROUTES.values()) | {"clarify"}})
-    for name in ("insurance_rag", "advice", "compare", "loan_rag", "calculator", "decline", "greeting", "clarify", "fine_print", "insurance_web_search", "loan_web_search", "financial_action"):
+    for name in ("insurance_rag", "advice", "compare", "loan_rag", "calculator", "decline", "greeting", "clarify", "fine_print", "insurance_web_search", "loan_web_search", "financial_action", "financial_overview"):
         graph.add_edge(name, "guard")
     graph.add_edge("handoff", END)
     graph.add_edge("guard", END)

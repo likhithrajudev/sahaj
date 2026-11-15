@@ -97,6 +97,16 @@ PURPOSES = {
             "partner may process the request under their own terms."
         ),
     },
+    "financial_profile": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "Sahaj can store the credit-card and loan details I choose to provide, including labels, card last four digits, "
+            "balances, payment due days, EMI amounts and interest rates, so I can review my own financial inventory and "
+            "get calculations. I will not provide a full card number, CVV, PIN or password. These details are not sent to "
+            "a lender or credit bureau by this feature. I can view, edit or delete them, and withdrawing this consent erases "
+            "the saved inventory."
+        ),
+    },
 }
 
 
@@ -124,6 +134,8 @@ META = {
                               "withdrawal": "Sahaj stops sending new application details. Data already sent must be handled with the provider."},
     "credit_bureau": {"title": "Request my credit score", "required": False, "requires": "conversation", "ttl_days": 1,
                       "withdrawal": "Sahaj stops making new bureau requests. A request already sent cannot be recalled."},
+    "financial_profile": {"title": "Track my cards and EMIs", "required": False, "requires": "conversation", "ttl_days": 365,
+                          "withdrawal": "Your saved card and loan inventory is erased."},
 }
 assert set(META) == set(PURPOSES), "every purpose needs presentation metadata"
 

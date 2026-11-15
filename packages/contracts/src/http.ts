@@ -140,6 +140,49 @@ export interface PrepaymentCalculationResponse {
   disclaimer: string;
 }
 
+export interface CreditCardInventoryInput {
+  label: string;
+  last_four?: string;
+  outstanding_balance: number;
+  minimum_due?: number;
+  due_day?: number;
+  annual_interest_rate_percent?: number;
+}
+
+export interface LoanInventoryInput {
+  label: string;
+  monthly_emi: number;
+  outstanding_principal: number;
+  due_day?: number;
+  annual_interest_rate_percent?: number;
+  remaining_months?: number;
+}
+
+export interface FinancialInventoryItem {
+  id: string;
+  type: "credit_card" | "loan";
+  label: string;
+  details: Omit<CreditCardInventoryInput, "label"> | Omit<LoanInventoryInput, "label">;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancialInventoryResponse {
+  consent: boolean;
+  consent_text: { purpose: "financial_profile"; title: string; version: string; text: string; withdrawal: string };
+  items: FinancialInventoryItem[];
+}
+
+export interface ReplaceFinancialInventoryRequest {
+  credit_cards: CreditCardInventoryInput[];
+  loans: LoanInventoryInput[];
+  confirmed: true;
+}
+
+export interface ReplaceFinancialInventoryResponse {
+  items: FinancialInventoryItem[];
+}
+
 /** GET /files */
 export interface FilesResponse {
   consent: boolean;
@@ -344,6 +387,7 @@ export const API_ROUTES = {
   feedback: "/feedback",
   ready: "/ready",
   usage: "/users/me/usage",
+  financialInventory: "/financial/inventory",
   adminUsage: "/admin/usage",
   cases: "/cases",
   deskVideoKyc: "/desk/cases/{id}/video-kyc",

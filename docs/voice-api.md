@@ -149,6 +149,7 @@ The reply **text is not streamed token by token**: every reply is checked by the
 
 - `{"type":"status","stage":...}` events during a turn: `transcribing`, `thinking`, `searching`/`comparing`/`calculating`, `checking`, `speaking` (use them for a typing indicator). `transcribing` is voice only; `speaking` only when audio follows.
 - The audio reply arrives as binary MP3 chunks, so playback can start before the last chunk.
+- Once a reply has passed the checks, its text is sent a few words at a time as `{"type":"assistant_delta","trace_id":"...","text":"..."}` (source tags left out), followed by the full `assistant` event. Handling the deltas is optional: append them to one bubble and let `assistant` complete it. Turn it off with `TEXT_STREAMING=false`.
 
 **Typed messages** on the socket: `{"type":"text","text":"...","language":"hi-IN","speak":false}`. It takes the same path as speech (same consent, masking and checks) and gets the same events minus the audio, which is sent only when `speak` is true. `language` defaults to the profile language.
 

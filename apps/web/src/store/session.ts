@@ -48,6 +48,8 @@ export type TimelineItem =
       verification: Verification | null;
       suggestions: string[];
       feedback: "up" | "down" | null;
+      /** The text is still arriving a few words at a time; the rest (agent, sources, checks) comes with the full reply. */
+      streaming?: boolean;
     }
   /** A message from the person (executive) handling the conversation. */
   | { id: string; kind: "agent"; name: string; text: string }

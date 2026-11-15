@@ -65,11 +65,23 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
 
   if (item.fallback) return <FallbackBubble>{children}</FallbackBubble>;
 
+  // While the text is still arriving, the agent and the checks are not known yet: dots hold the place of the
+  // labels (same height, so nothing moves when they come), and the actions wait for the whole reply.
+  const streaming = !!item.streaming;
+
   return (
     <div className="card max-w-[92%] rounded-tl-md px-4 pb-3.5 pt-3.5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <AgentBadge agent={item.agent} question={item.replyKind === "ask" && item.agent !== "advice"} />
-        <VerificationBadge item={item} />
+      <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1.5">
+        {streaming ? (
+          <span className="flex gap-1.5" aria-hidden>
+            {[0, 1, 2].map((i) => <span key={i} className="dot-breathe size-2 rounded-full bg-primary" />)}
+          </span>
+        ) : (
+          <>
+            <AgentBadge agent={item.agent} question={item.replyKind === "ask" && item.agent !== "advice"} />
+            <VerificationBadge item={item} />
+          </>
+        )}
       </div>
       <p dir="auto" className="mt-2.5 text-[17px] leading-[26px]">{children}</p>
       {item.textOnly && (
@@ -77,7 +89,7 @@ export function AssistantBubble({ item, isLatest, children }: { item: Assistant;
           <Icon name="subtitles" size={17} /> {t("textOnlyNoAudio")}
         </p>
       )}
-      {isLatest && (item.audioUrl || item.replyKind !== "ask") && (
+      {isLatest && !streaming && (item.audioUrl || item.replyKind !== "ask") && (
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-2.5">
           <Feedback item={item} />
           {item.audioUrl && !speakingThis && (

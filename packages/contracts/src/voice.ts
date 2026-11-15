@@ -210,6 +210,14 @@ export interface AssistantEvent {
   progress?: { step: number; total: number };
 }
 
+/** A few words of a reply that has already passed the checks, sent just before its `assistant` event so the text can
+ *  appear as it is "typed". Source tags are left out; the `assistant` event carries the whole reply. Optional to handle. */
+export interface AssistantDeltaEvent {
+  type: "assistant_delta";
+  trace_id: string;
+  text: string;
+}
+
 export interface DoneEvent {
   type: "done";
 }
@@ -370,6 +378,7 @@ export type ServerEvent =
   | BudgetExceededEvent
   | CardEvent
   | UserEvent
+  | AssistantDeltaEvent
   | AssistantEvent
   | DoneEvent
   | HandoffEvent
@@ -417,6 +426,7 @@ const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set<ServerEventType>([
   "budget_exceeded",
   "card",
   "user",
+  "assistant_delta",
   "assistant",
   "done",
   "handoff",

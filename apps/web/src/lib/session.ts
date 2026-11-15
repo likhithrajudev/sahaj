@@ -4,7 +4,7 @@ import { MicUnavailable, Recorder } from "@/lib/audio/recorder";
 import { api } from "@/lib/auth";
 import type { StringKey } from "@/lib/i18n";
 import { VoiceSocket } from "@/lib/socket";
-import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson } from "@/store/session";
+import { canTalk, initialSession, pushItem, updateItem, useSession, withPerson, type TimelineItem } from "@/store/session";
 import { closeAllSheets, openSheet, useUi } from "@/store/ui";
 
 /**
@@ -40,7 +40,23 @@ function waitForReply(turn: "sending" | "thinking") {
 function settle(turn: "idle" | "speaking" = "idle") {
   if (turnTimer) clearTimeout(turnTimer);
   turnTimer = null;
-  set({ turn, status: null, statusHistory: turn === "idle" ? [] : get().statusHistory, level: 0 });
+  // A reply that stopped arriving halfway (error, timeout, lost connection) is not an answer: take it away.
+  const timeline = get().timeline.some(isStreaming) ? get().timeline.filter((i) => !isStreaming(i)) : get().timeline;
+  set({ turn, timeline, status: null, statusHistory: turn === "idle" ? [] : get().statusHistory, level: 0 });
+}
+
+const isStreaming = (i: TimelineItem) => i.kind === "assistant" && !!i.streaming;
+
+/** The server asks for a permission just before the message that explains why: show the message first, then the
+ *  permission card under it. Call after adding a reply to the end of the timeline. */
+function replyBeforeItsConsent() {
+  const items = get().timeline;
+  const consentIdx = items.length - 2;
+  if (items[consentIdx]?.kind === "consent" && (items[consentIdx] as { answered: boolean | null }).answered === null) {
+    const reordered = [...items];
+    [reordered[consentIdx], reordered[consentIdx + 1]] = [reordered[consentIdx + 1], reordered[consentIdx]];
+    set({ timeline: reordered });
+  }
 }
 
 /** A string key, or a message from the server that is meant for the person. */
@@ -165,21 +181,37 @@ function handleEvent(e: ServerEvent) {
       if (useUi.getState().panelItemId) useUi.setState({ panelItemId: null }); // panel follows the newest card
       break;
 
+    case "assistant_delta": {
+      // The reply's text, a few words at a time (already checked by the server). It grows in one bubble, which the
+      // full `assistant` event then completes in place: no second bubble, no jump.
+      if (get().turn !== "sending" && get().turn !== "thinking") break; // the turn was given up on
+      const growing = get().timeline.find((i) => isStreaming(i) && i.kind === "assistant" && i.traceId === e.trace_id);
+      if (growing?.kind === "assistant") {
+        updateItem(growing.id, { text: growing.text + e.text });
+        break;
+      }
+      set({ replied: true }); // the text takes the place of the "working on it" bubble
+      pushItem({
+        kind: "assistant", agent: "general", text: e.text, citations: [], traceId: e.trace_id, replyKind: "answer",
+        fallback: false, audioUrl: null, audioSeconds: null, textOnly: false, verification: null, suggestions: [],
+        feedback: null, streaming: true,
+      });
+      replyBeforeItsConsent();
+      break;
+    }
+
     case "assistant": {
       set({ replied: true }); // the answer replaces the "working on it" bubble, even while its audio is still coming
-      pushItem({
-        kind: "assistant", agent: e.agent, text: e.text, citations: e.citations, traceId: e.trace_id,
+      const reply = {
+        kind: "assistant" as const, agent: e.agent, text: e.text, citations: e.citations, traceId: e.trace_id,
         replyKind: e.kind ?? "answer", fallback: !!e.fallback, audioUrl: null, audioSeconds: null, textOnly: false,
-        verification: e.verification ?? null, suggestions: e.suggestions ?? [], feedback: null,
-      });
-      // The server asks for a permission just before the message that explains why;
-      // show the message first, then the permission card under it.
-      const items = get().timeline;
-      const consentIdx = items.length - 2;
-      if (items[consentIdx]?.kind === "consent" && (items[consentIdx] as { answered: boolean | null }).answered === null) {
-        const reordered = [...items];
-        [reordered[consentIdx], reordered[consentIdx + 1]] = [reordered[consentIdx + 1], reordered[consentIdx]];
-        set({ timeline: reordered });
+        verification: e.verification ?? null, suggestions: e.suggestions ?? [], feedback: null, streaming: false,
+      };
+      const streamed = get().timeline.find((i) => isStreaming(i) && i.kind === "assistant" && i.traceId === e.trace_id);
+      if (streamed) updateItem(streamed.id, reply); // the same bubble, now with its sources, badges and actions
+      else {
+        pushItem(reply);
+        replyBeforeItsConsent();
       }
       if (e.progress) set({ progress: e.progress });
       else if (e.kind === "recommendation" || e.agent !== "advice") set({ progress: null });

@@ -44,7 +44,9 @@ def _looks_personal(text: str) -> bool:
 GREETINGS = {"hi", "hii", "hello", "hey", "hey there", "namaste", "namaskar", "namaskaram", "vanakkam", "good morning",
              "good afternoon", "good evening", "नमस्ते", "नमस्कार", "हेलो", "हाय"}
 HUMAN = {"talk to a human", "talk to a person", "speak to a human", "speak to a person", "human please", "agent please",
-         "connect me to a human", "connect me to a person", "i want a human", "i want to talk to a person"}
+         "connect me to a human", "connect me to a person", "i want a human", "i want to talk to a person",
+         "video kyc", "book my video kyc", "book video kyc", "schedule my video kyc", "i want to do video kyc",
+         "start video kyc", "do my video kyc", "वीडियो केवाईसी", "मेरा वीडियो केवाईसी बुक करें"}
 
 
 def fast_intent(text: str) -> Optional[Intent]:

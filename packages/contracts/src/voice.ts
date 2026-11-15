@@ -29,6 +29,9 @@ export interface CaseView {
   kind: "handoff" | "complaint" | "video_kyc" | "callback";
   status: "waiting" | "with_executive";
   priority: "urgent" | "high" | "normal";
+  /** Video KYC: the booked appointment (ISO time with timezone) and its HTTPS link, once an executive has set them. */
+  scheduled_for?: string | null;
+  meeting_url?: string | null;
 }
 
 export interface Citation {

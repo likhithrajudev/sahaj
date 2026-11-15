@@ -63,8 +63,8 @@ loan_fine_print
   The user wants the hidden charges, catches or true cost of a loan: fees not obvious from the interest rate, penalties, what to check before signing, what the small print says.
   Examples: "What are the hidden charges in my loan?" / "what should I watch out for before taking this loan?" / "loan mein extra charges kya hain?" / "लोन में छुपे हुए शुल्क कौन से हैं?"
 human_handoff
-  The user asks for a person, an agent or a callback, or is making a complaint, is angry or distressed, mentions a legal threat, or says the assistant is not helping.
-  Examples: "I want to talk to a person" / "this is useless, connect me to someone" / "मुझे किसी इंसान से बात करनी है"
+  The user asks for a person, an agent or a callback, asks to do, book or schedule their video KYC or identity verification, or is making a complaint, is angry or distressed, mentions a legal threat, or says the assistant is not helping. A question about what KYC is or which documents it needs is loan_guidance.
+  Examples: "I want to talk to a person" / "this is useless, connect me to someone" / "Book my video KYC" / "मुझे वीडियो केवाईसी करवानी है" / "मुझे किसी इंसान से बात करनी है"
 greeting
   Greetings, thanks, goodbyes, "hello", "are you there", or "what can you do?".
 out_of_scope

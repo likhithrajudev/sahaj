@@ -469,7 +469,8 @@ async def clarify(state: State, config: RunnableConfig):
 
 @node
 async def handoff(state: State, config: RunnableConfig):
-    return {"handoff": "user_requested"}
+    from desk.escalation import wants_video_kyc
+    return {"handoff": "video_kyc" if wants_video_kyc(state["text"]) else "user_requested"}
 
 
 # ---------------------------------------------------------------- the checks every reply passes

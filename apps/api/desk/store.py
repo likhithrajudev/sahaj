@@ -111,6 +111,11 @@ async def open_case(user_id: str, reason: str, *, session_id: Optional[str], sum
                                    (priority, datetime.now(timezone.utc) + timedelta(minutes=config.DESK_SLA_MINUTES[priority]),
                                     existing["id"]))
             existing["priority"] = priority
+        if kind == "video_kyc" and existing["kind"] in ("handoff", "callback"):
+            # a general request turns into the KYC appointment, so the executive can book it on the same case
+            async with db().connection() as conn:
+                await conn.execute("UPDATE cases SET kind = 'video_kyc' WHERE id = %s", (existing["id"],))
+            existing["kind"] = "video_kyc"
         if note:
             await add_message(existing["id"], "system", f"Asked again ({reason}): {note}")
         return existing, False

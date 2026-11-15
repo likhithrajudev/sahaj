@@ -36,3 +36,25 @@ ACK = {
 def acknowledgement(reason: str, lang: str) -> str:
     table = ACK[reason]
     return table.get(lang, table["en-IN"])
+
+
+# Asked for a person to do video KYC. Only consulted once the classifier has decided the person wants a human, so
+# "what is KYC?" stays a question.
+VIDEO_KYC = [re.compile(p, re.I) for p in (
+    r"\bv-?kyc\b", r"\bv-?cip\b", r"\bvideo\s*-?\s*kyc\b", r"\bkyc\b", r"\bvideo (identity |id )?verif",
+    r"\bidentity verif", r"\bverify my (identity|id)\b", r"केवाईसी", r"वीडियो\s*(केवाईसी|सत्यापन|वेरिफिकेशन)", r"पहचान (का )?सत्यापन",
+)]
+
+
+def wants_video_kyc(text: str) -> bool:
+    return any(p.search(text or "") for p in VIDEO_KYC)
+
+
+KYC_CONSENT = {
+    "en-IN": "I can ask our team to book your video KYC appointment. First, please read and agree to the permission below.",
+    "hi-IN": "मैं हमारी टीम से आपका वीडियो KYC अपॉइंटमेंट तय करवा सकता हूँ। पहले कृपया नीचे दी गई अनुमति पढ़कर स्वीकार करें।",
+}
+
+
+def kyc_consent_ask(lang: str) -> str:
+    return KYC_CONSENT.get(lang, KYC_CONSENT["en-IN"])

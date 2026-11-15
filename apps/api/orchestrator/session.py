@@ -45,6 +45,10 @@ def _inventory_request(text: str) -> bool:
     return bool(action and asset and not re.search(r"\bloan application\b", text, re.I))
 
 
+def _iso(value):
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
 class Session:
     """One conversation. The LangGraph orchestrator (orchestrator/graph.py) decides what to say; this class handles
     the connection: consent, speech in and out, history, and handing over to a person."""
@@ -77,6 +81,7 @@ class Session:
         self.inventory_flow = None
         self.pending_inventory = None
         self.pending = None                      # (text, language) waiting for the person's consent to analyse
+        self.pending_kyc: Optional[str] = None   # a video KYC request (its note) waiting for the video_kyc consent
         self.focus = []                          # plans just recommended or compared: what "the first one" means
 
     async def start(self, ask_consent: bool = True) -> None:
@@ -155,10 +160,8 @@ class Session:
         elif kind == "handoff":
             reason = data.get("reason") if data.get("reason") in ("video_kyc", "callback", "complaint") else "user_requested"
             note = data.get("note") if isinstance(data.get("note"), str) else None
-            if reason == "video_kyc" and not consent.is_active(self.user.subject, "video_kyc"):
-                return await self.ws.send_json({"type": "consent_required", **consent.required("video_kyc")})
             trace = Trace(self.id)
-            await self._handoff(reason, trace, note=self.vault.mask(normalise_digits(note[:500])) if note else None)
+            await self._ask_for_person(reason, trace, note=self.vault.mask(normalise_digits(note[:500])) if note else None)
             trace.save()
         elif kind == "handoff_cancel":
             await self._cancel_case()
@@ -209,6 +212,12 @@ class Session:
             action, lang = self.pending_inventory
             self.pending_inventory = None
             await self._guarded(lambda trace: self._inventory_action(action, lang, trace))
+        if purpose == "video_kyc" and self.pending_kyc is not None:
+            note, self.pending_kyc = self.pending_kyc, None
+            if granted:
+                trace = Trace(self.id)
+                await self._handoff("video_kyc", trace, note=note or None)
+                trace.save()
 
     # ---------- inbound: one typed message ----------
     async def on_text(self, text: str, language: Optional[str] = None, speak_reply: bool = False) -> None:
@@ -422,7 +431,7 @@ class Session:
         if "intent" in result:
             self.last_intent = result["intent"].intent
         if result.get("handoff"):
-            return await self._handoff(result["handoff"], trace, note=text)
+            return await self._ask_for_person(result["handoff"], trace, note=text, lang=lang)
         self.clarifications = self.clarifications + 1 if "clarify" in result["path"] else 0
         await self._deliver(result["turn"], result.get("problem"), text, lang, trace)
         if self.clarifications >= config.LOW_CONFIDENCE_HANDOFF_AFTER and not self.case:
@@ -551,6 +560,17 @@ class Session:
         await self.ws.send_json({"type": "consent_required", **consent.required("conversation")})
         return False
 
+    async def _ask_for_person(self, reason: str, trace: Trace, note: Optional[str] = None, lang: Optional[str] = None) -> None:
+        """The person asked for someone (the button, or in their own words). Video KYC needs its consent first: the request
+        waits for it and goes ahead as soon as it is granted."""
+        if reason == "video_kyc" and not consent.is_active(self.user.subject, "video_kyc"):
+            self.pending_kyc = note or ""
+            if lang is None:
+                return await self.ws.send_json({"type": "consent_required", **consent.required("video_kyc")})
+            return await self._deliver(Turn(text=escalation.kyc_consent_ask(lang), kind="answer", agent="general", judge=False,
+                                            request_consent="video_kyc"), None, note or "", lang, trace)
+        await self._handoff(reason, trace, note=note)
+
     async def _handoff(self, reason: str, trace: Trace, note: Optional[str] = None) -> None:
         """Bring in a person: open (or join) a case on the executive desk. From now on this conversation's messages go to
         the executive, not the AI, until the case is closed."""
@@ -561,7 +581,8 @@ class Session:
             log.error("Could not open a case: %s", e)
             trace.add("handoff", reason=reason, reference=None, error=str(e))
             return await self._error("I couldn't reach our team just now. Please try again in a moment.")
-        announced = bool(self.case and self.case["id"] == case["id"])   # already told, by the case_attached event
+        # already told, by the case_attached event (unless the request changed what the case is for)
+        announced = bool(self.case and self.case["id"] == case["id"] and self.case["kind"] == case["kind"])
         self._set_case(case)
         trace.add("handoff", reason=reason, reference=case["reference"])
         if not announced:
@@ -577,7 +598,8 @@ class Session:
         from desk import live as desk_live
         return {"id": self.case["id"], "reference": self.case["reference"], "kind": self.case["kind"],
                 "status": "with_executive" if self.case["status"] == "assigned" else "waiting",
-                "priority": self.case["priority"], "executives_online": bool(desk_live.executives.get(self.user.tenant_id))}
+                "priority": self.case["priority"], "executives_online": bool(desk_live.executives.get(self.user.tenant_id)),
+                "scheduled_for": _iso(self.case.get("scheduled_for")), "meeting_url": self.case.get("meeting_url")}
 
     async def _relay(self, text: str) -> None:
         """A message while a person handles the conversation: masked, kept on the case, passed to the executive live."""
@@ -610,8 +632,9 @@ class Session:
         if event["type"] == "inbox":   # a new offer: shown whatever the conversation is doing
             return await self.ws.send_json(event)
         if event["type"] == "case_attached":
-            if not (self.case and self.case["id"] == event["case_id"]):
-                self._set_case(dict(event["case"]))
+            if not (self.case and self.case["id"] == event["case_id"] and self.case["kind"] == event["case"]["kind"]):
+                same = self.case if self.case and self.case["id"] == event["case_id"] else {}
+                self._set_case({**same, **event["case"]})
                 await self.ws.send_json({"type": "handoff", "reference": self.case["reference"], "reason": self.case["reason"],
                                          "case": self._case_view()})
             return
@@ -621,6 +644,8 @@ class Session:
             self.case["status"] = "assigned"
         elif event["type"] == "agent_left":
             self.case["status"] = "open"
+        elif event["type"] == "video_kyc_scheduled":
+            self.case.update(scheduled_for=event["scheduled_for"], meeting_url=event["meeting_url"])
         await self.ws.send_json(event)
         if event["type"] == "handoff_closed":
             self._set_case(None)   # back to the AI

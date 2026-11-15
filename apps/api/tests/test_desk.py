@@ -41,6 +41,15 @@ def test_escalation_detection(text, expected):
     assert escalation.detect(text) == expected
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("Book my video KYC", True), ("I need to do my vkyc for the loan", True), ("मुझे वीडियो केवाईसी करवानी है", True),
+    ("please verify my identity", True), ("schedule a video verification call", True),
+    ("I want to talk to a person", False), ("call me back tomorrow", False),
+])
+def test_video_kyc_requests_are_recognised(text, expected):
+    assert escalation.wants_video_kyc(text) is expected
+
+
 def test_acknowledgements_exist_in_english_and_hindi_with_fallback():
     for reason in ("distress", "complaint"):
         assert escalation.acknowledgement(reason, "hi-IN") != escalation.acknowledgement(reason, "en-IN")
@@ -87,11 +96,14 @@ class FakeWS:
 
 
 class Graph:
-    """Answers, or asks a clarifying question, as told; counts how often the AI was used."""
-    calls, clarify = 0, False
+    """Answers, asks a clarifying question, or hands over (with a reason), as told; counts how often the AI was used."""
+    calls, clarify, handoff = 0, False, None
 
     async def astream(self, state, config, stream_mode):
         Graph.calls += 1
+        if Graph.handoff:
+            yield "values", {"handoff": Graph.handoff, "path": ["classify", "handoff"]}
+            return
         path = ["classify", "clarify", "guard"] if Graph.clarify else ["classify", "insurance_rag", "guard"]
         yield "values", {"turn": Turn(text="An answer from the AI.", judge=False, prechecked=True), "path": path}
 
@@ -114,7 +126,7 @@ async def with_app(scenario, monkeypatch):
     async with pool.connection() as conn:
         await conn.execute("TRUNCATE users CASCADE")
     monkeypatch.setattr(session_module, "GRAPH", Graph())
-    Graph.calls, Graph.clarify = 0, False
+    Graph.calls, Graph.clarify, Graph.handoff = 0, False, None
 
     async def silent(text, lang):
         return
@@ -271,6 +283,66 @@ def test_video_kyc_needs_consent_and_is_booked_by_an_executive(monkeypatch):
         other = (await c.post("/cases", headers=ch, json={"kind": "callback"})).json()
         await c.post(f"/desk/cases/{other['id']}/claim", headers=ah)
         assert (await c.post(f"/desk/cases/{other['id']}/video-kyc", headers=ah, json={"scheduled_for": when})).status_code == 409
+    asyncio.run(with_app(scenario, monkeypatch))
+
+
+@needs_db
+def test_a_video_kyc_request_waits_for_consent_then_opens_and_its_booking_survives_a_reconnect(monkeypatch):
+    async def scenario(c):
+        cust, ch = await login(c, monkeypatch, "g-c", "asha@example.com")
+        agent, ah = await login(c, monkeypatch, "g-e", "ravi@example.com", "Ravi")
+        _, boss = await login(c, monkeypatch, "g-b", "boss@example.com")
+        await make_executive(c, boss, agent)
+        s, ws = await customer_session(cust)
+        version = consent.PURPOSES["video_kyc"]["version"]
+
+        await s.on_control(json.dumps({"type": "handoff", "reason": "video_kyc", "note": "after 6pm"}))
+        assert ws.last("consent_required")["purpose"] == "video_kyc" and s.case is None
+        await s.on_control(json.dumps({"type": "consent", "purpose": "video_kyc", "granted": False, "version": version}))
+        assert s.case is None and s.pending_kyc is None                       # declining drops the request
+
+        await s.on_control(json.dumps({"type": "handoff", "reason": "video_kyc", "note": "after 6pm"}))
+        await s.on_control(json.dumps({"type": "consent", "purpose": "video_kyc", "granted": True, "version": version}))
+        assert s.case and s.case["kind"] == "video_kyc" and ws.last("handoff")["reason"] == "video_kyc"
+        assert ws.last("handoff")["case"]["scheduled_for"] is None
+        case_id = s.case["id"]
+        assert (await desk.get(case_id))["note"] == "after 6pm"
+
+        await c.post(f"/desk/cases/{case_id}/claim", headers=ah)
+        when = (datetime.now(timezone.utc) + timedelta(days=1)).replace(microsecond=0)
+        await c.post(f"/desk/cases/{case_id}/video-kyc", headers=ah,
+                     json={"scheduled_for": when.isoformat(), "meeting_url": "https://meet.example/kyc2"})
+        assert s.case["meeting_url"] == "https://meet.example/kyc2"
+
+        s2, ws2 = await customer_session(cust)                                 # the app reconnects
+        view = ws2.sent[0]["case"]
+        assert view["kind"] == "video_kyc" and view["status"] == "with_executive" and view["meeting_url"] == "https://meet.example/kyc2"
+        assert datetime.fromisoformat(view["scheduled_for"]) == when
+    asyncio.run(with_app(scenario, monkeypatch))
+
+
+@needs_db
+def test_asking_for_video_kyc_in_words_asks_for_consent_and_turns_an_open_case_into_kyc(monkeypatch):
+    async def scenario(c):
+        cust, _ = await login(c, monkeypatch, "g-c", "asha@example.com")
+        s, ws = await customer_session(cust)
+        Graph.handoff = "video_kyc"
+        await s.on_text("I want to book my video KYC")
+        assert ws.last("consent_required")["purpose"] == "video_kyc" and s.case is None
+        assert ws.last("assistant")["text"] == escalation.kyc_consent_ask("en-IN") and ws.types()[-1] == "done"
+        await s.on_control(json.dumps({"type": "consent", "purpose": "video_kyc", "granted": True,
+                                       "version": consent.PURPOSES["video_kyc"]["version"]}))
+        assert s.case and s.case["kind"] == "video_kyc"
+
+        # a general request already open becomes the KYC case, and the conversation is told
+        dev, _ = await login(c, monkeypatch, "g-d", "dev@example.com")
+        other, ws_other = await customer_session(dev)
+        await other.on_control(json.dumps({"type": "handoff"}))
+        assert other.case["kind"] == "handoff"
+        consent.grant(other.user.subject, "video_kyc", version=consent.PURPOSES["video_kyc"]["version"])
+        await other.on_control(json.dumps({"type": "handoff", "reason": "video_kyc"}))
+        assert other.case["kind"] == "video_kyc" and ws_other.last("handoff")["case"]["kind"] == "video_kyc"
+        assert (await desk.get(other.case["id"]))["kind"] == "video_kyc"
     asyncio.run(with_app(scenario, monkeypatch))
 
 

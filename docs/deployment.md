@@ -15,12 +15,11 @@ everything is on one origin, the browser gets `wss://` automatically and no CORS
 ## Build
 
 ```bash
-docker build -t sahaj .                                   # bakes the 2.2 GB embedding model in (recommended)
-docker build -t sahaj --build-arg BAKE_MODEL=false .      # smaller image; downloads the model on every cold start
+docker build -t sahaj .
 ```
 
-Baking the model makes the image about 3.5 GB, but startup is fast and needs no outbound download. Run a single
-image for amd64 hosts: `docker buildx build --platform linux/amd64 -t <registry>/sahaj:<tag> --push .` (Apple
+Embeddings come from OpenAI, so there is no model in the image and nothing to download at startup. Build for amd64
+hosts: `docker buildx build --platform linux/amd64 -t <registry>/sahaj:<tag> --push .` (Apple
 Silicon builds arm64 by default, which Azure and Fargate amd64 tasks cannot run).
 
 ## Configuration
@@ -28,15 +27,22 @@ Silicon builds arm64 by default, which Azure and Fargate amd64 tasks cannot run)
 | Variable | Required | Notes |
 |---|---|---|
 | `SARVAM_API_KEY` | yes | Store as a secret (Key Vault / Secrets Manager) |
+| `OPENAI_API_KEY` | yes | Embeddings (knowledge base search) and typed replies. Secret |
+| `JWT_SECRET` | yes | Signs access tokens; 32+ random characters. Secret. Sign-in is disabled (503) without it |
+| `GOOGLE_CLIENT_IDS` | yes | OAuth client ids allowed to sign in (web, Android, iOS), comma separated |
+| `ADMIN_EMAILS` | recommended | Emails that become admins on first sign-in |
+| `ENVIRONMENT` | yes | `production` (turns off the dev test console and dev login) |
+| `TRUST_PROXY_HEADERS` | yes behind a load balancer | `true`, so rate limits see the real client IP |
+| `AWS_S3_BUCKET`, `AWS_REGION` | for uploads | File uploads are disabled (503) without a bucket. Prefer an IAM role to keys |
 | `DATABASE_URL` | yes | `postgresql://user:pass@host:5432/sahaj?sslmode=require` |
 | `ADMIN_API_KEY` | recommended | Enables `/audit` (disabled when unset) |
 | `HANDOFF_WEBHOOK_URL` | optional | Receives human-handoff packets |
 | `ADVISORY_ENABLED` | optional | `false` = explain and compare only, never recommend |
 | `LEDGER_DB` | preset | `/data/ledger.db`. **Mount persistent storage at `/data`** |
-| `CORS_ORIGINS` | no | Only if the web app is hosted on a different origin |
+| `CORS_ORIGINS` | no | Only if the web app is hosted on a different origin (defaults allow localhost:3000/5173) |
 
-Health check: `GET /health`. The container loads the embedding model at startup, so allow a **startup grace
-period of about 120 s** before health checks count.
+Health check: `GET /health` (liveness) and `GET /ready` (Postgres, storage and knowledge base). Allow a **startup grace
+period of about 30 s** before health checks count.
 
 ## Database
 
@@ -79,7 +85,7 @@ and set a startup probe on `/health`. Keep `--min-replicas 1`: scaling to zero w
 
 Don't use App Runner: it does not support WebSockets.
 
-- **Task:** 2 vCPU / 4 GB (the e5-large model needs about 2.5 GB of RAM), port 8000, secrets from Secrets Manager, and an EFS volume mounted at `/data`.
+- **Task:** 1 vCPU / 2 GB, port 8000, secrets from Secrets Manager, and an EFS volume mounted at `/data`.
 - **ALB:** HTTPS listener with an ACM certificate forwarding to the target group (HTTP, port 8000). Health check path `/health`, health check grace period 120 s.
 - **Idle timeout:** the ALB default is 60 s. The container pings sockets every 20 s, so the default is fine. Raise it to 300 s if you put another proxy in front.
 - **Stickiness** is not needed, because each WebSocket stays on the task that accepted it.

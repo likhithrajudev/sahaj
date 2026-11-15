@@ -6,7 +6,7 @@ Stacks, all in `ap-southeast-2`:
 |---|---|---|
 | `SahajData` | VPC, RDS Postgres 16 (`sahaj/db` secret, TLS forced), app secret `sahaj/app`, task security group. Termination protected. | hand |
 | `SahajApp` | ECS Fargate (ARM64) service behind an ALB, blue/green. Serves the API and the web app at `/app`. | CI on `main` |
-| `SahajDeploy` | GitHub OIDC provider and the `sahaj-github-deploy` role (can only assume the CDK bootstrap roles, only from `main`). | hand, once |
+| `SahajDeploy` | GitHub OIDC provider and the `sahaj-github-deploy` role. Opt-in (`-c githubOidc=true`): this AWS organisation blocks creating OIDC providers. | hand, once |
 
 ## Blue/green
 
@@ -29,4 +29,4 @@ After that, every push to `main` that passes the frontend, backend and infra job
 
 ## HTTPS and Google sign-in
 
-Without `certificateArn` the load balancer serves plain HTTP on its AWS hostname. Google sign-in needs HTTPS on an authorised origin, so a real domain is needed. Request an ACM certificate for it in `ap-southeast-2`, set `certificateArn` in `cdk.json`, point the domain at the ALB, and add `https://<domain>` to the OAuth client's authorised JavaScript origins and to `corsOrigins`.
+CloudFront fronts the ALB, so the app is served over HTTPS at the `Url` output (a `cloudfront.net` hostname); add that origin to the Google OAuth client. For a custom domain: Request an ACM certificate for it in `ap-southeast-2`, set `certificateArn` in `cdk.json`, point the domain at the ALB, and add `https://<domain>` to the OAuth client's authorised JavaScript origins and to `corsOrigins`.

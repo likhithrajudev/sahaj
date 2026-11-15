@@ -34,7 +34,7 @@ export class DataStack extends Stack {
       allocatedStorage: 20,
       maxAllocatedStorage: 100,
       storageEncrypted: true,
-      backupRetention: Duration.days(7),
+      backupRetention: Duration.days(1),   // free-plan maximum; raise after upgrading the account
       deletionProtection: true,
       removalPolicy: RemovalPolicy.SNAPSHOT,
       publiclyAccessible: false,

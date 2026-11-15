@@ -6,12 +6,16 @@ REGION="${REGION:-ap-southeast-2}"
 current="$(aws secretsmanager get-secret-value --secret-id sahaj/app --region "$REGION" --query SecretString --output text)"
 merged="$(ENV_FILE="$ENV_FILE" CURRENT="$current" python3 - <<'PY'
 import json, os
-keys = ["SARVAM_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY", "ADMIN_API_KEY", "GOOGLE_CLIENT_IDS"]
+keys = ["SARVAM_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY", "ADMIN_API_KEY", "GOOGLE_CLIENT_IDS", "FIRECRAWL_API_KEY", "ADMIN_EMAILS"]
+aliases = {"GOOGLE_CLIENT_ID": "GOOGLE_CLIENT_IDS"}
 secret = json.loads(os.environ["CURRENT"])
+for k in keys:
+    secret.setdefault(k, "")
 for line in open(os.environ["ENV_FILE"]):
     k, _, v = line.strip().partition("=")
+    k = aliases.get(k, k)
     if k in keys and v:
-        secret[k] = v
+        secret[k] = v.strip().strip('"').strip("'")
 print(json.dumps(secret))
 PY
 )"

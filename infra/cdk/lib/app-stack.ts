@@ -3,6 +3,8 @@ import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -63,7 +65,7 @@ export class AppStack extends Stack {
         DB_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
         DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
         ...Object.fromEntries(
-          ["SARVAM_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY", "ADMIN_API_KEY", "GOOGLE_CLIENT_IDS", "JWT_SECRET"].map(
+          ["SARVAM_API_KEY", "OPENAI_API_KEY", "LANGSMITH_API_KEY", "ADMIN_API_KEY", "GOOGLE_CLIENT_IDS", "FIRECRAWL_API_KEY", "ADMIN_EMAILS", "JWT_SECRET"].map(
             (k) => [k, ecs.Secret.fromSecretsManager(appSecret, k)],
           ),
         ),
@@ -144,7 +146,22 @@ export class AppStack extends Stack {
       }),
     }).attachToApplicationTargetGroup(blue);
 
-    new CfnOutput(this, "Url", { value: `${props.certificateArn ? "https" : "http"}://${alb.loadBalancerDnsName}` });
+    // Free HTTPS hostname in front of the ALB (Google sign-in needs an https origin). Nothing is cached.
+    const cdn = new cloudfront.Distribution(this, "Cdn", {
+      defaultBehavior: {
+        origin: new origins.LoadBalancerV2Origin(alb, {
+          protocolPolicy: props.certificateArn ? cloudfront.OriginProtocolPolicy.HTTPS_ONLY : cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+          readTimeout: Duration.seconds(60),
+        }),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+      },
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
+    });
+    new CfnOutput(this, "Url", { value: `https://${cdn.distributionDomainName}` });
+    new CfnOutput(this, "AlbUrl", { value: `${props.certificateArn ? "https" : "http"}://${alb.loadBalancerDnsName}` });
     new CfnOutput(this, "ClusterName", { value: cluster.clusterName });
     new CfnOutput(this, "ServiceName", { value: service.serviceName });
   }

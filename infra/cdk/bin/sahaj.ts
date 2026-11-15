@@ -18,7 +18,8 @@ new AppStack(app, "SahajApp", {
   certificateArn: app.node.tryGetContext("certificateArn") || undefined,
 });
 
-new DeployStack(app, "SahajDeploy", {
+// Opt-in: some AWS organisations forbid creating the GitHub OIDC provider.
+if (app.node.tryGetContext("githubOidc") === "true") new DeployStack(app, "SahajDeploy", {
   env,
   repository: app.node.tryGetContext("githubRepository"),
   branch: "main",

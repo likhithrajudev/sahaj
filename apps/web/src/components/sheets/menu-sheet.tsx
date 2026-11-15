@@ -62,6 +62,9 @@ export function MenuSheet() {
         </Section>
 
         <nav className="flex flex-col border-t border-line">
+          <Row icon="description" onClick={() => openSheet("documents")}>Policy documents</Row>
+          <Row icon="task_alt" onClick={() => openSheet("claim")}>Prepare a claim</Row>
+          <Row icon="calculate" onClick={() => openSheet("loan")}>Prepare a loan application</Row>
           {!pwa.isStandalone() && <Row icon="install_mobile" onClick={() => openSheet("install")}>{t("menuInstall")}</Row>}
           <Row icon="info" onClick={() => openSheet("about")}>{t("menuAbout")}</Row>
         </nav>

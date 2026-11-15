@@ -18,7 +18,7 @@ from auth import feedback as feedback_store
 from rag import ingest, store
 from rag.embeddings import warm_up
 from orchestrator import registry
-from routers import audit, auth, chat, consents, desk, feedback, files, financial, ops, platform, procedures, search, stt, usage, users, voice
+from routers import audit, auth, chat, consents, desk, feedback, files, financial, journeys, ops, platform, procedures, search, stt, usage, users, voice
 from storage import blob, files as file_store, index as doc_index
 from usage import ledger as usage_ledger
 from desk import store as desk_store
@@ -73,6 +73,8 @@ async def lifespan(app: FastAPI):
         from financial import providers as financial_providers, store as financial_store
         await financial_store.init_schema()
         financial_providers.load_configured()
+        from journeys import store as journey_store
+        await journey_store.init_schema()
         from memory import episodic, procedural, semantic
         await episodic.init_schema()    # memory layer 2: past conversations
         await semantic.init_schema()    # memory layer 3: facts with embeddings
@@ -110,6 +112,7 @@ app.include_router(audit.router)
 app.include_router(platform.router)
 app.include_router(search.router)
 app.include_router(financial.router)
+app.include_router(journeys.router)
 
 
 @app.exception_handler(auth_store.Unavailable)
@@ -140,7 +143,7 @@ class SPAStaticFiles(StaticFiles):
 
 # First path segments that belong to the API: never answered with the web app's index.html.
 API_PREFIXES = {"auth", "users", "admin", "chat", "consents", "files", "feedback", "usage", "desk", "stt", "ws",
-                "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"}
+                "audit", "drafts", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"}
 web_dist = Path(config.WEB_DIST)
 has_web = (web_dist / "index.html").is_file()
 

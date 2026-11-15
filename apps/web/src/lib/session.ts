@@ -67,7 +67,7 @@ const socket = new VoiceSocket({
       // A new socket is a new server session: it forgot the conversation. Consent and an open case belong to the
       // account and come back in the `session` event.
       set({
-        consentPrompt: null, sessionId: null, progress: null,
+        consentPrompt: null, sessionId: null, progress: null, selectingDocument: false,
         timeline: get().timeline.map((i) => (i.kind === "consent" && i.answered === null ? { ...i, answered: false } : i)),
       });
       if (get().timeline.length) pushItem({ kind: "reset" });
@@ -92,13 +92,17 @@ function handleEvent(e: ServerEvent) {
         if (purpose in consent) consent[purpose as ConsentPurpose] = { state: granted ? "granted" : "unknown" };
       }
       set((s) => ({
-        sessionId: e.id, user: e.user, consent: { ...s.consent, ...consent },
+        sessionId: e.id, user: e.user, selectedDocument: e.selected_document ?? null, documentScopeError: null, selectingDocument: false, consent: { ...s.consent, ...consent },
         declined: consent.conversation.state === "granted" ? false : s.declined,
         handoff: e.case ? { reference: e.case.reference, case: e.case, agentName: null } : null,
       }));
       void loadConsentDetails();
       break;
     }
+
+    case "document_scope":
+      set({ selectedDocument: e.document, documentScopeError: e.error ?? null, selectingDocument: false });
+      break;
 
     case "consent_required":
       lastPrompt[e.purpose] = e;
@@ -366,6 +370,14 @@ export async function cancelTalking() {
 }
 
 /** A follow-up chip: sent as a typed message, answered aloud like a spoken one. Call from a tap. */
+export function selectDocument(fileId: string | null) {
+  if (get().turn !== "idle" || !socket.send({ type: "select_document", file_id: fileId })) {
+    set({ documentScopeError: "Wait for the conversation to connect or finish its turn." });
+    return;
+  }
+  set({ selectingDocument: true, documentScopeError: null });
+}
+
 export function sendSuggestion(text: string) {
   if (!canTalk(get())) return;
   if (get().turn === "speaking") stopSpeaking();

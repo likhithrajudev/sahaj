@@ -107,6 +107,8 @@ export interface StoredFile {
    *  read (scans and photos by Sarvam OCR), only with the document_analysis consent. */
   index_status: "none" | "indexing" | "ready" | "empty" | "unsupported" | "over_budget" | "failed";
   indexed_chunks: number;
+  indexed_pages?: number[];
+  total_pages?: number | null;
 }
 
 /** GET /files */

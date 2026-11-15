@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import type { UiLang } from "@/lib/i18n";
 
 export type Theme = "system" | "light" | "dark";
-export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about" | "trust";
+export type Sheet = null | "menu" | "citations" | "install" | "mic" | "about" | "trust" | "documents" | "claim" | "loan";
 /** The trust badges a reply can carry (see Verification in @sahaj/contracts). */
 export type TrustLevel = "verified" | "engine" | "checked";
 

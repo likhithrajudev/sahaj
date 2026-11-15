@@ -59,7 +59,8 @@ def fast_intent(text: str) -> Optional[Intent]:
     return None
 
 
-async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Optional[str]) -> Intent:
+async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Optional[str], *,
+                   cache_query: bool = True) -> Intent:
     """What the user wants. If the model's answer cannot be parsed twice, returns out_of_scope with confidence 0,
     which the graph treats as 'ask the user to clarify' rather than guessing."""
     if not in_flow and (quick := fast_intent(text)):
@@ -68,7 +69,7 @@ async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Op
     messages = PROMPT.format_messages(system=procedural.text("intent.classifier"), previous=previous or "none",
                                       in_flow="yes" if in_flow else "no", asking=asking or "nothing", message=text)
     plain = [{"role": {"system": "system", "human": "user"}[m.type], "content": m.content} for m in messages]
-    use_cache = cache.CLASSIFIER_CACHE if config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text) else None
+    use_cache = cache.CLASSIFIER_CACHE if cache_query and config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text) else None
 
     for attempt in range(2):
         reply = await llm.chat(plain, purpose="classify", cache=use_cache)

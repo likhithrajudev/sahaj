@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useT } from "@/lib/i18n";
 import { requestHuman, reviewConsent } from "@/lib/session";
+import { openSheet } from "@/store/ui";
 
 /** Spoken examples: hints for what to say, not buttons (the backend takes voice only). */
 const EXAMPLES = [
@@ -20,6 +21,14 @@ export function Welcome() {
       <div>
         <h1 className="text-[26px] font-semibold leading-[34px]">{t("greeting")}</h1>
         <p className="mt-2 text-[17px] leading-[25px] text-ink-2">{t("greetingSub")}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="md" variant="soft" onClick={() => openSheet("claim")}>
+          <Icon name="task_alt" size={19} /> Prepare a claim
+        </Button>
+        <Button size="md" variant="neutral" onClick={() => openSheet("documents")}>
+          <Icon name="description" size={19} /> Policy documents
+        </Button>
       </div>
       <div>
         <h2 className="mb-2.5 flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[.08em] text-ink-2">

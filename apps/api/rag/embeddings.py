@@ -107,10 +107,10 @@ async def _shared_put(items: List[tuple]) -> None:
         log.debug("Embedding cache unavailable: %s", e)
 
 
-async def embed_queries(texts: List[str]) -> List[List[float]]:
+async def embed_queries(texts: List[str], *, cache_query: bool = True) -> List[List[float]]:
     """Embeddings of search queries: from the process cache, then the shared cache, then the API."""
     results: List[Optional[List[float]]] = [None] * len(texts)
-    cacheable = [config.APP_CACHE_ENABLED and not _personal(t) for t in texts]
+    cacheable = [cache_query and config.APP_CACHE_ENABLED and not _personal(t) for t in texts]
     for i, text in enumerate(texts):
         if cacheable[i] and (hit := EMBEDDING_CACHE.get(text)) is not None:
             results[i] = hit

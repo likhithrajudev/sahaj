@@ -139,13 +139,14 @@ async def init_schema() -> None:
     await create_tables(db(), SCHEMA)
 
 
-async def add(user_id: str, filename: str, content_type: str, data: bytes, blob: str, category: str = "document") -> dict:
+async def add(user_id: str, filename: str, content_type: str, data: bytes, blob: str, category: str = "document",
+              *, index_status: str = "none") -> dict:
     async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            """INSERT INTO user_files (user_id, filename, content_type, size_bytes, sha256, blob_name, category)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO user_files (user_id, filename, content_type, size_bytes, sha256, blob_name, category, index_status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id, filename, content_type, size_bytes, sha256, blob_name, created_at, index_status, indexed_chunks, category""",
-            (user_id, filename, content_type, len(data), digest(data), blob, category))
+            (user_id, filename, content_type, len(data), digest(data), blob, category, index_status))
         return await cur.fetchone()
 
 
@@ -159,7 +160,7 @@ async def count(user_id: str) -> int:
 
 async def list_for(user_id: str, category: Optional[str] = None) -> List[dict]:
     async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute("SELECT id, filename, content_type, size_bytes, sha256, created_at, index_status, indexed_chunks, category "
+        await cur.execute("SELECT id, filename, content_type, size_bytes, sha256, created_at, index_status, indexed_chunks, indexed_pages, total_pages, category "
                           "FROM user_files WHERE user_id = %(u)s AND (%(c)s::text IS NULL OR category = %(c)s) "
                           "ORDER BY created_at DESC", {"u": user_id, "c": category})
         return await cur.fetchall()

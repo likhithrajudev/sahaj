@@ -2,11 +2,13 @@ import json
 import logging
 import time
 import uuid
+from contextlib import nullcontext
 from typing import Optional
 
 import httpx
 import psycopg
 from fastapi import WebSocket
+from langsmith import tracing_context
 
 import config
 from advisory.flow import AdviceFlow
@@ -68,6 +70,7 @@ class Session:
         self.flow: Optional[AdviceFlow] = None   # the needs analysis, if one is under way
         self.calc: Optional[LoanCalc] = None     # a loan calculation, if one is under way
         self.pending = None                      # (text, language) waiting for the person's consent to analyse
+        self.selected_document: Optional[dict] = None
         self.focus = []                          # plans just recommended or compared: what "the first one" means
 
     async def start(self, ask_consent: bool = True) -> None:
@@ -81,6 +84,7 @@ class Session:
             log.warning("Could not check for an open case: %s", e)
         await self.ws.send_json({"type": "session", "id": self.id, "user": self.user.public(),
                                  "memory": self.memory is not None, "case": self._case_view(), "resumed": resumed,
+                                 "selected_document": self.selected_document,
                                  # consent belongs to the account: a returning person may already have given it
                                  "consents": {p: consent.is_active(self.user.subject, p) for p in consent.PURPOSES}})
         if ask_consent:
@@ -91,7 +95,8 @@ class Session:
         and no needs-analysis or calculator figures."""
         return {"session_id": self.id, "user_id": self.user.id, "history": self.history, "last_intent": self.last_intent,
                 "focus": self.focus, "clarifications": self.clarifications, "turns": self._turns, "channel": self.channel,
-                "started_at": self.started_at.isoformat()}
+                "started_at": self.started_at.isoformat(),
+                "selected_document_id": self.selected_document["id"] if self.selected_document else None}
 
     async def restore(self, session_id: str) -> bool:
         """Pick up a conversation from working memory (this person's own only: the key includes tenant and user)."""
@@ -103,6 +108,11 @@ class Session:
         self.history, self.last_intent, self.focus = state["history"], state["last_intent"], state["focus"]
         self.clarifications, self._turns, self.channel = state["clarifications"], state["turns"], state["channel"]
         self.started_at = datetime.fromisoformat(state["started_at"])
+        saved = state.get("selected_document_id")
+        if saved:
+            self.selected_document = await self._readable_pdf(saved) or {
+                "id": saved, "name": "Selected PDF", "unavailable": True,
+            }
         return True
 
     async def close(self) -> None:
@@ -151,6 +161,20 @@ class Session:
             trace = Trace(self.id)
             await self._handoff(reason, trace, note=self.vault.mask(normalise_digits(note[:500])) if note else None)
             trace.save()
+        elif kind == "select_document":
+            file_id = data.get("file_id")
+            if file_id is not None:
+                selected = await self._readable_pdf(file_id)
+                if selected is None:
+                    await self.ws.send_json({"type": "document_scope", "document": self.selected_document,
+                                             "error": "Choose an indexed PDF you have allowed Sahaj to read."})
+                    return
+            else:
+                selected = None
+            self.selected_document = selected
+            if consent.is_active(self.user.subject, "conversation"):
+                await working.save(self.user, self.id, self.snapshot())
+            await self.ws.send_json({"type": "document_scope", "document": selected})
         elif kind == "handoff_cancel":
             await self._cancel_case()
         elif kind == "text":
@@ -160,6 +184,20 @@ class Session:
             await self.on_text(text, language if isinstance(language, str) else None, data.get("speak") is True)
         else:
             await self._error(f"Unknown message type: {kind}")
+
+    async def _readable_pdf(self, file_id) -> Optional[dict]:
+        from storage import files
+
+        try:
+            file_id = str(uuid.UUID(file_id)) if isinstance(file_id, str) else None
+        except ValueError:
+            return None
+        if not file_id or not consent.is_active(self.user.subject, "document_analysis"):
+            return None
+        row = await files.get(self.user.id, file_id)
+        if row and row["content_type"] == "application/pdf" and row["index_status"] == "ready":
+            return {"id": file_id, "name": row["filename"]}
+        return None
 
     async def _on_consent(self, data: dict) -> None:
         """A consent button. Recorded against the person (so it carries over to their next conversation), with the version
@@ -208,7 +246,7 @@ class Session:
 
     async def _typed(self, text: str, lang: str, trace: Trace) -> None:
         masked = self.vault.mask(normalise_digits(text.strip()))
-        trace.add("text", language=lang, text=masked)
+        trace.add("text", language=lang, text="[withheld: private turn]" if self.selected_document else masked)
         await self.ws.send_json({"type": "user", "text": masked})
         command = commands.parse(masked)
         if command:
@@ -241,6 +279,8 @@ class Session:
             self.history.clear()
             self.last_intent = None
             self.focus = []
+            self.selected_document = None
+            await self.ws.send_json({"type": "document_scope", "document": None})
             self.flow = self.calc = self.pending = None
             self.memory = None
             self.clarifications = self.failures = 0
@@ -293,7 +333,7 @@ class Session:
             metrics.TURN_SECONDS.labels(self.channel).observe(time.perf_counter() - started)
             await usage_ledger.add(self.user.id, [{**c, "trace_id": trace.id} for c in calls])   # what this turn cost, even a failed one
             trace.save()
-            if self.history and consent.is_active(self.user.subject, "conversation"):
+            if (self.history or self.selected_document) and consent.is_active(self.user.subject, "conversation"):
                 await working.save(self.user, self.id, self.snapshot())   # working memory: resumable from here
 
     async def _status(self, stage: str) -> None:
@@ -310,7 +350,7 @@ class Session:
         # not an exception that would close the person's connection.
         lang = resolve_language(stt.get("language_code"))
         text = self.vault.mask(normalise_digits((stt.get("transcript") or "").strip()))
-        trace.add("stt", language=lang, transcript=text)
+        trace.add("stt", language=lang, transcript="[withheld: private turn]" if self.selected_document else text)
         if not text:
             return await self._error("I didn't catch that.")
         await self.ws.send_json({"type": "user", "text": text})
@@ -327,26 +367,29 @@ class Session:
 
     async def _respond(self, text: str, lang: str, trace: Trace) -> None:
         await self._status("thinking")
-        await self._recall(text)
+        if not self.selected_document:
+            await self._recall(text)
         result = None
-        async for mode, chunk in GRAPH.astream(
-            {"text": text, "lang": lang, "language": language_name(lang), "path": []},
-            config={"configurable": {"session": self, "trace": trace},
-                    **tracing.run_config(session_id=self.id, user_id=self.user.id, language=lang, channel=self.channel,
-                                         trace_id=trace.id, memory=self.memory is not None)},
-            stream_mode=["updates", "values"],
-        ):
-            if mode == "values":
-                result = chunk  # the last one is the finished state
-            elif DECIDING.isdisjoint(chunk):  # a node that wrote a reply has finished: the checks run next
-                await self._status("checking")
+        with tracing_context(enabled=False) if self.selected_document else nullcontext():
+            async for mode, chunk in GRAPH.astream(
+                {"text": text, "lang": lang, "language": language_name(lang), "path": []},
+                config={"configurable": {"session": self, "trace": trace},
+                        **tracing.run_config(session_id=self.id, user_id=self.user.id, language=lang, channel=self.channel,
+                                             trace_id=trace.id, memory=self.memory is not None)},
+                stream_mode=["updates", "values"],
+            ):
+                if mode == "values":
+                    result = chunk  # the last one is the finished state
+                elif DECIDING.isdisjoint(chunk):  # a node that wrote a reply has finished: the checks run next
+                    await self._status("checking")
         trace.add("route", path=result["path"])
         if "intent" in result:
             self.last_intent = result["intent"].intent
         if result.get("handoff"):
             return await self._handoff(result["handoff"], trace, note=text)
         self.clarifications = self.clarifications + 1 if "clarify" in result["path"] else 0
-        await self._deliver(result["turn"], result.get("problem"), text, lang, trace)
+        await self._deliver(result["turn"], result.get("problem"), text, lang, trace,
+                            persist=not self.selected_document)
         if self.clarifications >= config.LOW_CONFIDENCE_HANDOFF_AFTER and not self.case:
             await self._handoff("low_confidence", trace, note=text)
 
@@ -385,7 +428,8 @@ class Session:
             "type": "assistant", "agent": turn.agent, "text": shown, "trace_id": trace.id,
             "kind": turn.kind,           # answer | ask | confirm | recommendation | compare | calc
             "fallback": bool(problem),   # the checks blocked the reply: this is the safe "I can't confirm" text
-            "citations": [citations.describe(c, turn.sources[c]) for c in cited if c in turn.sources],
+            "citations": [{**citations.describe(c, turn.sources[c]), **turn.citation_metadata.get(c, {})}
+                          for c in cited if c in turn.sources],
             "structured": structure.build(spoken, turn.append, turn.sources, turn.kind),
             "verification": suggest.verification(blocked=bool(problem), from_cache=turn.from_cache, prechecked=turn.prechecked,
                                                  judged=turn.judge and bool(turn.sources) and not turn.prechecked,

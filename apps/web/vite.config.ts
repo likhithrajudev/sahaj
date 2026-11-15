@@ -6,7 +6,7 @@ import { VitePWA } from "vite-plugin-pwa";
 
 /** First path segments that belong to the API (keep in sync with API_PREFIXES in apps/api/main.py). */
 const API_PATHS = ["ws", "auth", "users", "admin", "chat", "consents", "files", "feedback", "usage", "desk", "stt",
-  "audit", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"];
+  "audit", "drafts", "ready", "metrics", "health", "docs", "redoc", "openapi.json", "test"];
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");

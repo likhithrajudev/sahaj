@@ -43,10 +43,12 @@ export interface Citation {
   title: string | null;
   /** The clause text without its number and title. */
   body: string;
+  file_id?: string;
+  page?: number;
 }
 
 /** What produced an assistant message. */
-export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc" | "command";
+export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc" | "command" | "document_answer";
 
 // ---------------------------------------------------------------- client -> server
 // Audio: send one complete recording (max 30 s; WebM or Safari's MP4, detected server-side) as a binary frame,
@@ -81,7 +83,20 @@ export interface TextMessage {
   speak?: boolean;
 }
 
-export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
+export interface DocumentScope {
+  id: string;
+  name: string;
+  unavailable?: boolean;
+}
+
+export interface DocumentScopeEvent {
+  type: "document_scope";
+  document: DocumentScope | null;
+  error?: string;
+}
+
+export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage
+  | { type: "select_document"; file_id: string | null };
 
 /** Stream endpoint controls. Audio arrives in binary WebSocket frames until audio_end or audio_cancel. */
 export type VoiceStreamControl = { type: "audio_end" } | { type: "audio_cancel" };
@@ -99,6 +114,7 @@ export interface SessionEvent {
   case: CaseView | null;
   /** True when this conversation was restored from a saved one rather than started fresh. */
   resumed: boolean;
+  selected_document?: DocumentScope | null;
   /** Which consents the account already has (they carry over between conversations and devices). */
   consents: Partial<Record<ConsentPurpose | "video_kyc", boolean>>;
 }
@@ -355,6 +371,7 @@ export interface CardEvent {
 // ---------------------------------------------------------------- unions
 
 export type ServerEvent =
+  | DocumentScopeEvent
   | SessionEvent
   | ConsentRequiredEvent
   | ConsentStatusEvent
@@ -403,6 +420,7 @@ export function parseServerEvent(raw: string): ServerEvent | null {
 
 const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set<ServerEventType>([
   "session",
+  "document_scope",
   "consent_required",
   "consent",
   "status",

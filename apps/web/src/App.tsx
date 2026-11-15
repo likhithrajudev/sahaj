@@ -6,6 +6,7 @@ import { Timeline } from "@/components/conversation/timeline";
 import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { Header } from "@/components/layout/header";
 import { Splash } from "@/components/layout/splash";
+import { DocumentScopeBar, JourneySheet, PolicyDocumentsSheet } from "@/components/sheets/document-workflows";
 import { CitationSheet } from "@/components/sheets/citation-sheet";
 import { ConsentSheet } from "@/components/sheets/consent-sheet";
 import { AboutSheet, InstallSheet, TrustSheet } from "@/components/sheets/info-sheets";
@@ -52,6 +53,7 @@ function Conversation() {
     <div className="flex h-full flex-col bg-bg">
       <Header />
       <ConnectionBanner />
+      <DocumentScopeBar />
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <Timeline />
@@ -61,6 +63,8 @@ function Conversation() {
       </div>
       <ConsentSheet />
       <CitationSheet />
+      <PolicyDocumentsSheet />
+      <JourneySheet />
       <MicSheet />
       <MenuSheet />
       <InstallSheet />

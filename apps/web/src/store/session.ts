@@ -70,6 +70,9 @@ export interface HandoffState {
 
 export interface SessionState {
   connection: ConnectionStatus;
+  selectedDocument: import("@sahaj/contracts").DocumentScope | null;
+  selectingDocument: boolean;
+  documentScopeError: string | null;
   sessionId: string | null;
   user: User | null;
   consent: Record<ConsentPurpose, ConsentInfo>;
@@ -105,7 +108,7 @@ export interface SessionState {
 
 export const initialSession: SessionState = {
   connection: "connecting",
-  sessionId: null,
+  sessionId: null, selectedDocument: null, selectingDocument: false, documentScopeError: null,
   user: null,
   consent: {
     conversation: { state: "unknown" }, needs_analysis: { state: "unknown" }, memory: { state: "unknown" },

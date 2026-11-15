@@ -41,3 +41,18 @@ ADVISORY_ENABLED = os.getenv("ADVISORY_ENABLED", "true").lower() in ("1", "true"
 LEDGER_DB = os.getenv("LEDGER_DB", "ledger.db")           # consent + audit + handoff records
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")                # protects /audit; endpoint is disabled if unset
 HANDOFF_WEBHOOK_URL = os.getenv("HANDOFF_WEBHOOK_URL")    # where human-handoff packets are delivered
+
+# ---- Accounts: Google sign-in exchanged for Sahaj's own JWTs. Auth is disabled (503) until these are set.
+JWT_SECRET = os.getenv("JWT_SECRET")                      # signs access tokens; at least 32 random characters
+JWT_ISSUER = os.getenv("JWT_ISSUER", "sahaj")
+ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
+REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "30"))
+# OAuth client ids a Google ID token may be issued for (one per platform: web, Android, iOS), comma separated.
+GOOGLE_CLIENT_IDS = [c.strip() for c in os.getenv("GOOGLE_CLIENT_IDS", "").split(",") if c.strip()]
+# Emails that become admins when they sign in. Everyone else is a plain user until an admin changes it.
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+CORS_ORIGINS = [o.strip() for o in (os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:5173").split(",") if o.strip()]
+
+# ---- Per-user memory (only with the person's "memory" consent)
+MEMORY_MAX_SUMMARIES = int(os.getenv("MEMORY_MAX_SUMMARIES", "10"))      # older conversation summaries are dropped
+MEMORY_PROMPT_SUMMARIES = int(os.getenv("MEMORY_PROMPT_SUMMARIES", "3")) # how many recent ones reach the model

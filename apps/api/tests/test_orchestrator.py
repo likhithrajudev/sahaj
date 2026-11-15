@@ -25,7 +25,7 @@ class FakeSession:
     def __init__(self):
         self.id, self.vault, self.history = "s1", Vault(), []
         self.flow = self.calc = self.agent = self.last_intent = self.pending = None
-        self.focus, self.consented = [], True
+        self.focus, self.consented, self.memory = [], True, None
 
     def _can_advise(self):
         return self.consented
@@ -48,7 +48,7 @@ def stubs(monkeypatch):
         calls["retrieve"] += 1
         return state["hits"]
 
-    async def generate(role, sources, text, previous, language, depth, advice=False, purpose="answer"):
+    async def generate(role, sources, text, previous, language, depth, advice=False, purpose="answer", memory=None):
         calls["generate"] += 1
         return "The waiting period is 30 days [doc:1.1]."
 

@@ -153,7 +153,9 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
 
     previous = _previous(session)
     in_flow = bool(session.flow and session.flow.active)
-    cacheable = config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text, previous) and bool(sources)
+    # A reply shaped by someone's memory is theirs alone, so it neither reads from nor goes into the shared cache.
+    cacheable = (config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text, previous) and bool(sources)
+                 and not session.memory)
     key = (domain, " ".join(text.lower().split()), (previous or "").lower(), language, deep,
            tuple(sorted((h["key"], h["sha256"]) for h in hits))) if cacheable else None  # clause hashes: edits invalidate
 
@@ -164,7 +166,8 @@ async def _rag_turn(session, trace, state: State, domain: str, agent: str, scope
             return Turn(text=cached["text"], kind="answer", agent=agent, sources=cached["sources"], prechecked=True,
                         from_cache=True)
 
-    reply = await generate(AGENTS[agent].role, sources, text, previous, language, DEEP if deep else BRIEF)
+    reply = await generate(AGENTS[agent].role, sources, text, previous, language, DEEP if deep else BRIEF,
+                           memory=session.memory)
     return Turn(text=session.vault.mask(reply), kind="answer", agent=agent, sources=sources, judge=bool(sources),
                 detailed=deep, asked=text, cache_key=key)
 
@@ -237,7 +240,8 @@ async def decline(state: State, config: RunnableConfig):
 @node
 async def greeting(state: State, config: RunnableConfig):
     session, _ = _ctx(config)
-    reply = await generate(AGENTS["general"].role, {}, state["text"], None, state["language"], BRIEF)
+    reply = await generate(AGENTS["general"].role, {}, state["text"], None, state["language"], BRIEF,
+                           memory=session.memory)
     return {"turn": Turn(text=session.vault.mask(reply), kind="answer", agent="general", judge=False)}
 
 

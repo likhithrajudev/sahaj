@@ -28,6 +28,15 @@ PURPOSES = {
             "You can withdraw consent at any time."
         ),
     },
+    "memory": {
+        "version": "2026-11-draft-1",
+        "text": (
+            "Sahaj can remember a short summary of your conversations and a few preferences, such as the language you "
+            "speak and the topics you asked about, so it can help you better next time. It never keeps numbers, "
+            "identifiers, contact or health details. You can see what is remembered and delete any of it, and "
+            "withdrawing consent erases it all."
+        ),
+    },
     "video_kyc": {
         "version": "2026-11-draft-1",
         "text": (

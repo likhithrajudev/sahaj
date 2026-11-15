@@ -4,12 +4,68 @@ Talk to Sahaj by voice about insurance policies and loan offers. The client reco
 
 - **Voice endpoint:** `ws://127.0.0.1:8000/ws/voice` (use `wss://` in production)
 - **Interactive REST docs:** `http://127.0.0.1:8000/docs`
-- **Working reference client:** `apps/api/static/index.html`
+- **Sign-in required:** see [Authentication](#authentication)
+
+## Authentication
+
+Sahaj signs people in with Google and then uses its own JWTs. `/ws/voice`, `/users/*` and `/admin/*` need an access token. `/health` and `/auth/*` do not.
+
+1. The client signs in with Google (Google Identity Services on web, the Google SDK on Android/iOS) and gets an **ID token**. Its OAuth client id must be listed in the server's `GOOGLE_CLIENT_IDS`.
+2. `POST /auth/google` with `{"id_token": "...", "platform": "web"|"android"|"ios"}` returns `{access_token, refresh_token, token_type, expires_in, user}`. The account is created on first sign-in.
+3. Send `Authorization: Bearer <access_token>` on REST calls. The access token lives for 15 minutes.
+4. When it expires, `POST /auth/refresh` with `{"refresh_token": "..."}` returns a new pair. **A refresh token works once**: store the new one every time. Reusing an old one signs that device out everywhere.
+5. `POST /auth/logout` with the refresh token signs the device out (204).
+
+**WebSocket.** Browsers cannot set headers on a WebSocket, so connect with `ws://.../ws/voice?access_token=<access_token>` (non-browser clients can send the `Authorization` header instead). If the token is missing, invalid or expired the server closes the socket with code **4401**: refresh the token and reconnect. Check the token is fresh before connecting, because URLs are logged.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /users/me` | The profile (`id, email, name, picture, language, platform, role`) and `memory_consent`. |
+| `PATCH /users/me` | Update `name`, `language` (for example `hi-IN`) or `platform`. |
+| `DELETE /users/me` | Delete the account, its sign-ins and everything remembered (204). |
+| `GET /admin/users`, `PATCH /admin/users/{id}/role` | Admin only. Roles are `user` and `admin`. |
+
+## Memory
+
+With the person's **`memory` consent**, Sahaj remembers a short summary of each conversation and a few preferences (language, topics, goals, answer style) and uses them in later conversations. It never stores numbers, identifiers, contact or health details. Unlike the other consents, `memory` belongs to the person, not to one conversation.
+
+- Ask for it like any other consent: send `{"type":"consent","purpose":"memory","granted":true}` on the socket, or `PUT /users/me/memory/consent` with `{"granted": true}`. Show the consent text verbatim: `GET /users/me/memory` returns it as `consent_text`.
+- The `session` event says whether memory is in use (`"memory": true`). Memory is written when the socket closes.
+- `GET /users/me/memory` lists everything remembered. `DELETE /users/me/memory/{id}` removes one item and `DELETE /users/me/memory` removes all of it.
+- Withdrawing consent (`granted: false`, on the socket or over REST) **erases all remembered data**.
+
+## Text chat and streaming
+
+The reply **text is not streamed token by token**: every reply is checked by the guardrails and a fact-check before anyone sees it, so it arrives whole. What you can stream is progress and audio:
+
+- `{"type":"status","stage":"transcribing"|"thinking"|"checking"|"speaking"}` events during a turn (use them for a typing indicator). `transcribing` is voice only; `speaking` only when audio follows.
+- The audio reply arrives as binary MP3 chunks, so playback can start before the last chunk.
+
+**Typed messages** on the socket: `{"type":"text","text":"...","language":"hi-IN","speak":false}`. It takes the same path as speech (same consent, masking and checks) and gets the same events minus the audio, which is sent only when `speak` is true. `language` defaults to the profile language.
+
+**Plain HTTP for text clients.** `POST /chat/stream` is the same protocol as a Server-Sent Events stream, for clients that cannot hold a WebSocket:
+
+```
+POST /chat/stream      Authorization: Bearer <access_token>
+{"message": {"type":"text","text":"What is the waiting period?"}}          (no session_id: starts a conversation)
+→ data: {"type":"session","id":"...","user":{...},"memory":false}
+→ data: {"type":"consent_required","purpose":"conversation",...}            show it, then:
+
+POST /chat/stream
+{"session_id":"...","message":{"type":"consent","purpose":"conversation","granted":true}}
+→ data: {"type":"consent","purpose":"conversation","status":"granted"}
+
+POST /chat/stream
+{"session_id":"...","message":{"type":"text","text":"What is the waiting period?"}}
+→ data: {"type":"user",...}  {"type":"status",...}  {"type":"assistant",...}  {"type":"done"}
+```
+
+Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
 
 ## Session flow
 
 ```
-connect    ← {"type":"session","id":"..."}
+connect    ← {"type":"session","id":"...","user":{...},"memory":false}
            ← {"type":"consent_required","purpose":"conversation","version":"...","text":"..."}
 user taps "I agree" (show `text` verbatim, with accept and decline)
            → {"type":"consent","purpose":"conversation","granted":true}
@@ -31,13 +87,15 @@ The server remembers the last 20 messages for as long as the socket is open. **C
 |---|---|
 | **Binary** | One complete recording (maximum 30 seconds). Send it only after `done`, `error` or `handoff`. |
 | **Text (JSON)** | `{"type":"consent","purpose":"...","granted":true\|false}`: grant or withdraw consent. |
+| | `{"type":"text","text":"...","language":"en-IN","speak":false}`: a typed message (see [Text chat](#text-chat-and-streaming)). |
 | | `{"type":"handoff"}`: the **talk to a human** button. Send it any time. |
 
 ## Server → client (JSON text frames)
 
 | `type` | Fields | What to do |
 |---|---|---|
-| `session` | `id` | Keep it as the session reference for support requests. |
+| `session` | `id`, `user`, `memory` | `id` is the session reference for support requests. `user` is the signed-in profile and `memory` says whether remembered context is in use. |
+| `status` | `stage` | Progress of the current turn: `transcribing`, `thinking`, `checking`, `speaking`. No content. |
 | `consent_required` | `purpose`, `version`, `text` | Show `text` exactly as sent with accept and decline buttons, then reply with a `consent` message. No audio is processed until `conversation` is granted. A second purpose, `needs_analysis`, is requested the first time the user asks for a recommendation: it covers using their age, income, family and existing cover. If they decline, Sahaj still explains and compares plans but will not ask for or use personal details. |
 | `card` | `kind`, `card`, `trace_id` | Structured data to render as UI, sent just before the matching `assistant` message. See "Cards" below. Always trust the card over the spoken text for figures. |
 | `consent` | `purpose`, `status` | Confirms `granted` or `revoked`. After `revoked` the server forgets the conversation. |

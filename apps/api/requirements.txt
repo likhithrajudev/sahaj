@@ -16,5 +16,8 @@ fastembed
 langgraph
 langchain-core
 
+# Accounts: JWT access tokens, Google ID-token verification
+pyjwt[crypto]
+
 # Tests
 pytest

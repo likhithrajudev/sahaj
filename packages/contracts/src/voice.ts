@@ -3,7 +3,10 @@
  * Keep in sync with apps/api/routers/voice.py and the orchestrator events it emits.
  */
 
-export type ConsentPurpose = "conversation" | "needs_analysis";
+import type { User } from "./http";
+
+/** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
+export type ConsentPurpose = "conversation" | "needs_analysis" | "memory";
 export type AgentName = "insurance" | "loan" | "general";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions";
 
@@ -25,14 +28,30 @@ export interface HandoffRequest {
   type: "handoff";
 }
 
-export type ClientMessage = ConsentMessage | HandoffRequest;
+/** A typed message. It takes the same path as speech; the reply is spoken only when `speak` is true. */
+export interface TextMessage {
+  type: "text";
+  /** 1 to 2000 characters. */
+  text: string;
+  /** BCP-47 tag such as "hi-IN". Defaults to the user's profile language. */
+  language?: string;
+  speak?: boolean;
+}
+
+export type ClientMessage = ConsentMessage | HandoffRequest | TextMessage;
 
 // ---------- Server -> client (JSON text frames; MP3 chunks arrive as binary frames) ----------
 
 export interface SessionEvent {
   type: "session";
   id: string;
+  user: User;
+  /** True when Sahaj is using what it remembers about this person in this conversation. */
+  memory: boolean;
 }
+
+/** Close code when the access token is missing, invalid or expired: refresh it (POST /auth/refresh) and reconnect. */
+export const WS_UNAUTHORIZED = 4401;
 
 export interface ConsentRequiredEvent {
   type: "consent_required";
@@ -46,6 +65,14 @@ export interface ConsentStatusEvent {
   type: "consent";
   purpose: ConsentPurpose;
   status: "granted" | "revoked";
+}
+
+export type Stage = "transcribing" | "thinking" | "checking" | "speaking";
+
+/** Progress through a turn. Carries no content: the reply arrives whole, after the guardrails have passed it. */
+export interface StatusEvent {
+  type: "status";
+  stage: Stage;
 }
 
 export interface UserEvent {
@@ -128,6 +155,7 @@ export type ServerEvent =
   | SessionEvent
   | ConsentRequiredEvent
   | ConsentStatusEvent
+  | StatusEvent
   | CardEvent
   | UserEvent
   | AssistantEvent

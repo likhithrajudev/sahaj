@@ -9,7 +9,7 @@ from typing import Optional
 
 import httpx
 import psycopg
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from langsmith import tracing_context
 
 import config
@@ -420,6 +420,13 @@ class Session:
             outcome = "error"
             trace.add("error", message=str(e))
             await self._error(str(e))
+        except WebSocketDisconnect:
+            raise
+        except Exception as e:   # one bad turn must not end the conversation
+            outcome = "error"
+            log.exception("turn failed", extra={"session": self.id, "trace_id": trace.id})
+            trace.add("error", message=type(e).__name__)
+            await self._error("Something went wrong with that one. Please try again.")
         finally:
             metrics.TURNS.labels(self.channel, outcome).inc()
             metrics.TURN_SECONDS.labels(self.channel).observe(time.perf_counter() - started)
@@ -440,7 +447,7 @@ class Session:
         telemetry.record_speech("stt", seconds, pricing.stt_cost(seconds))
         # Silence or unclear audio can come back without a transcript or language: that is "I didn't catch that",
         # not an exception that would close the person's connection.
-        lang = resolve_language(stt.get("language_code"))
+        lang = resolve_language(stt.get("language_code") or self.user.language)
         text = self.vault.mask(normalise_digits((stt.get("transcript") or "").strip()))
         scoped = bool(self.selected_document)
         inventory_active = not scoped and bool(self.inventory_flow and self.inventory_flow.active)

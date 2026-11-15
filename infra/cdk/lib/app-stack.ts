@@ -160,6 +160,7 @@ export class AppStack extends Stack {
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
     });
+    container.addEnvironment("PUBLIC_API_URL", `https://${cdn.distributionDomainName}`);
     new CfnOutput(this, "Url", { value: `https://${cdn.distributionDomainName}` });
     new CfnOutput(this, "AlbUrl", { value: `${props.certificateArn ? "https" : "http"}://${alb.loadBalancerDnsName}` });
     new CfnOutput(this, "ClusterName", { value: cluster.clusterName });

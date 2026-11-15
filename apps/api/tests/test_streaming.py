@@ -85,3 +85,25 @@ def test_typed_turns_stream_text_without_any_voice(monkeypatch):
 def test_the_core_rules_allow_a_warm_opening_without_facts():
     from agents.base import CORE
     assert "warm, patient person" in CORE and "states no fact" in CORE and "source tag" in CORE
+def test_an_unexpected_error_ends_the_turn_not_the_conversation(monkeypatch):
+    class Broken:
+        async def astream(self, state, config, stream_mode):
+            raise KeyError("language_code")
+            yield
+    monkeypatch.setattr(session_module, "GRAPH", Broken())
+    kinds, events = run(monkeypatch, None, text_only=True)
+    assert kinds[-1] == "error" and "try again" in events[-1]["message"]
+    monkeypatch.setattr(session_module, "GRAPH", Graph())
+    kinds, _ = run(monkeypatch, None, text_only=True)
+    assert "assistant" in kinds and kinds[-1] == "done"
+
+
+def test_unclear_audio_without_a_language_uses_the_profile_language(monkeypatch):
+    async def stt(audio, filename, content_type):
+        return {"transcript": "", "language_code": None}
+    monkeypatch.setattr(session_module, "transcribe_audio", stt)
+    ws = WS()
+    s = session_module.Session(ws, USER)
+    consent.grant(USER.subject, "conversation")
+    asyncio.run(s.on_audio(b"\x1a\x45\xdf\xa3" + b"\0" * 64))
+    assert not any(isinstance(e, dict) and e.get("message", "").startswith("Something went wrong") for e in ws.events)

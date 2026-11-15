@@ -15,6 +15,22 @@ import config
 
 
 @pytest.fixture(autouse=True)
+def default_tenant():
+    """Tests act as a person of the default tenant unless they say otherwise (asyncio.run copies this context)."""
+    import tenancy
+    token = tenancy.current_tenant.set(config.DEFAULT_TENANT)
+    yield
+    tenancy.current_tenant.reset(token)
+
+
+@pytest.fixture(autouse=True)
+def no_real_providers(monkeypatch):
+    """No test reaches OpenAI or Sarvam with the real keys in .env.local: tests that need a provider mock it."""
+    monkeypatch.setattr(config, "OPENAI_API_KEY", None)
+    monkeypatch.setattr(config, "SARVAM_API_KEY", None)
+
+
+@pytest.fixture(autouse=True)
 def no_rate_limit_by_default(monkeypatch):
     """Rate-limit state is shared by the whole process, so tests that sign in repeatedly would trip it. The tests that
     are about rate limiting (test_observability.py) switch it back on."""

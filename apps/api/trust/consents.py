@@ -29,8 +29,8 @@ def client_ref(ip: Optional[str]) -> Optional[str]:
 async def _erase(user, purpose: str) -> Dict[str, int]:
     """What Sahaj holds only because of this purpose."""
     if purpose == "memory":
-        from memory import store as memory_store
-        return {"memories": await memory_store.delete_all(user.id)}
+        from memory import episodic, store as memory_store
+        return {"memories": await memory_store.delete_all(user.id), "episodes": await episodic.delete_all(user.id)}
     if purpose == "documents":   # the files the person uploaded (recordings have their own consent)
         from storage import files
         return {"files": await files.purge(user, files.UPLOADABLE)}
@@ -40,6 +40,12 @@ async def _erase(user, purpose: str) -> Dict[str, int]:
     if purpose == "document_analysis":
         from storage import index
         return {"document_passages": await index.forget(user.id)}
+    if purpose == "credit_bureau":
+        from financial import store as financial_store
+        return {"credit_check_references": await financial_store.forget(user.id, ("credit_check",))}
+    if purpose == "financial_application":
+        from financial import store as financial_store
+        return {"application_references": await financial_store.forget(user.id, ("loan_application", "insurance_application"))}
     return {}
 
 
@@ -63,7 +69,7 @@ async def withdraw(user, purpose: str, *, channel: str, ip: Optional[str] = None
 
 
 async def set_consent(user, purpose: str, granted: bool, *, channel: str, version: Optional[str] = None,
-                      ip: Optional[str] = None) -> Dict:
+                      ip: Optional[str] = None, details: Optional[dict] = None) -> Dict:
     """Record a decision. Granting needs the version of the text the person saw when `version` is given (and the REST
     API always requires it). Returns {"purpose", "granted", "withdrawn", "erased"}."""
     if purpose not in consent.PURPOSES:
@@ -77,7 +83,8 @@ async def set_consent(user, purpose: str, granted: bool, *, channel: str, versio
     needs = consent.META[purpose]["requires"]
     if needs and not consent.is_active(user.subject, needs):
         raise ConsentError("requires", f"'{purpose}' needs '{needs}' consent first.", needs)
-    consent.grant(user.subject, purpose, channel=channel, meta={"client": client_ref(ip)}, version=version)
+    consent.grant(user.subject, purpose, channel=channel,
+                  meta={"client": client_ref(ip), **(details or {})}, version=version)
     return {"purpose": purpose, "granted": True, "withdrawn": [], "erased": {}}
 
 

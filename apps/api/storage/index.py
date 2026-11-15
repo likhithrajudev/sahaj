@@ -1,5 +1,6 @@
-"""Turns an uploaded PDF into searchable, citable clauses that belong to one person.
+"""Turns an uploaded PDF or photo into searchable, citable clauses that belong to one person.
 
+A PDF with a text layer is read here; a scanned PDF or a photo (PNG, JPEG) is read by Sarvam's OCR (services/ocr.py).
 Text is read page by page, split into short passages, masked for personal identifiers (PAN, Aadhaar, phone, account
 numbers...) BEFORE it is embedded or stored, so the AI model is never shown them, and kept in `user_doc_chunks`. Each
 passage is cited as [mydoc-<file>:p<page>.<n>], the same way the built-in knowledge base is."""
@@ -15,6 +16,7 @@ from psycopg.rows import dict_row
 import config
 from auth.store import db
 from rag.embeddings import embed_passages
+from services import ocr, telemetry
 from trust.pii import Vault, normalise_digits
 
 log = logging.getLogger("sahaj.docindex")
@@ -34,18 +36,22 @@ CREATE TABLE IF NOT EXISTS user_doc_chunks (
 CREATE INDEX IF NOT EXISTS user_doc_chunks_user_idx ON user_doc_chunks(user_id);
 CREATE INDEX IF NOT EXISTS user_doc_chunks_file_idx ON user_doc_chunks(file_id);
 """
-# index_status: none (not read), indexing, ready, empty (no readable text, e.g. a scan), unsupported (an image), failed
+# index_status: none (not read), indexing, ready, empty (nothing readable), unsupported (a kind OCR cannot read),
+# over_budget (the person's monthly limit is used up), failed
 
 
 async def init_schema() -> None:
+    import tenancy
     from rag.store import vector_dim
-    async with db().connection() as conn:
-        dim = await vector_dim(conn, "user_doc_chunks")
-        if dim is not None and dim != config.EMBED_DIM:   # made by another embedding model: read the PDFs again
-            log.warning("Document passages use %s dimensions; EMBED_DIM is %s. They will be rebuilt.", dim, config.EMBED_DIM)
-            await conn.execute("DROP TABLE user_doc_chunks")
-            await conn.execute("UPDATE user_files SET index_status = 'none', indexed_chunks = 0 WHERE index_status <> 'none'")
-        await conn.execute(SCHEMA)
+    from tenancy.db import create_tables
+    with tenancy.system():
+        async with db().connection() as conn:
+            dim = await vector_dim(conn, "user_doc_chunks")
+            if dim is not None and dim != config.EMBED_DIM:   # made by another embedding model: read the PDFs again
+                log.warning("Document passages use %s dimensions; EMBED_DIM is %s. They will be rebuilt.", dim, config.EMBED_DIM)
+                await conn.execute("DROP TABLE user_doc_chunks")
+                await conn.execute("UPDATE user_files SET index_status = 'none', indexed_chunks = 0 WHERE index_status <> 'none'")
+    await create_tables(db(), SCHEMA)
 
 
 async def reindex_pending() -> int:
@@ -54,10 +60,13 @@ async def reindex_pending() -> int:
     from psycopg.rows import dict_row
     from storage import blob
     from trust import consent
-    async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute("""SELECT f.id, f.user_id, f.blob_name, f.content_type FROM user_files f
-                             WHERE f.content_type = 'application/pdf' AND f.index_status IN ('none', 'failed')""")
-        rows = await cur.fetchall()
+    import tenancy
+    with tenancy.system():
+        async with db().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute("""SELECT f.id, f.user_id, f.blob_name, f.content_type, f.tenant_id FROM user_files f
+                             WHERE f.content_type IN ('application/pdf', 'image/png', 'image/jpeg')
+                               AND f.index_status IN ('none', 'failed')""")
+            rows = await cur.fetchall()
     done = 0
     for row in rows:
         if not consent.is_active(f"user:{row['user_id']}", "document_analysis"):
@@ -67,8 +76,9 @@ async def reindex_pending() -> int:
         except Exception as e:
             log.warning("Could not fetch %s for re-indexing: %s", row["id"], e)
             continue
-        if await index_file(str(row["user_id"]), str(row["id"]), data, row["content_type"]) == "ready":
-            done += 1
+        with tenancy.as_tenant(row["tenant_id"]):   # read and stored as the file's own tenant
+            if await index_file(str(row["user_id"]), str(row["id"]), data, row["content_type"]) == "ready":
+                done += 1
     return done
 
 
@@ -121,14 +131,37 @@ async def _status(file_id: str, status: str, chunks: int = 0) -> None:
         await conn.execute("UPDATE user_files SET index_status = %s, indexed_chunks = %s WHERE id = %s", (status, chunks, file_id))
 
 
-async def index_file(user_id: str, file_id: str, data: bytes, content_type: str) -> str:
-    """Read, mask, embed and store one file. Returns the resulting index_status. Never raises."""
+async def _text(data: bytes, content_type: str, language: str) -> Tuple[List[Tuple[int, str]], str]:
+    """(pages, how they were read). A PDF with a text layer is read here, for free; a scanned PDF or a photo goes to
+    Sarvam's OCR."""
+    if content_type == "application/pdf":
+        pages = await asyncio.to_thread(pdf_pages, data)
+        if pages:
+            return pages, "text"
+    if not ocr.supported(content_type):
+        return [], "unsupported"
+    pages, billed = await ocr.read(data, content_type, language)
+    telemetry.meter({"kind": "ocr", "provider": "sarvam", "model": "sarvam-vision", "purpose": "ocr", "units": billed,
+                     "cost_usd": billed * config.SARVAM_OCR_PRICE_PER_PAGE})
+    return pages, "ocr"
+
+
+async def index_file(user_id: str, file_id: str, data: bytes, content_type: str, language: str = "en-IN") -> str:
+    """Read, mask, embed and store one file. Returns the resulting index_status. Never raises.
+    What it costs (OCR pages, embeddings) is charged to the person, and nothing is read once they are over their limit."""
+    from usage import ledger as usage_ledger
+    calls: list = []
+    token = telemetry.current_meter.set(calls)
+    channel = telemetry.current_channel.set("documents")
     try:
-        if content_type != "application/pdf":
+        if (await usage_ledger.status(user_id))["exceeded"]:
+            await _status(file_id, "over_budget")
+            return "over_budget"
+        await _status(file_id, "indexing")
+        pages, how = await _text(data, content_type, language)
+        if how == "unsupported":
             await _status(file_id, "unsupported")
             return "unsupported"
-        await _status(file_id, "indexing")
-        pages = await asyncio.to_thread(pdf_pages, data)
         chunks = chunk(pages)
         if not chunks:
             await _status(file_id, "empty")
@@ -142,14 +175,19 @@ async def index_file(user_id: str, file_id: str, data: bytes, content_type: str)
                         "INSERT INTO user_doc_chunks (user_id, file_id, clause, page, content, embedding) VALUES (%s, %s, %s, %s, %s, %s)",
                         (user_id, file_id, c["clause"], c["page"], c["content"], Vector(v)))
         await _status(file_id, "ready", len(chunks))
+        log.info("Read file %s (%s, %d passages).", file_id, how, len(chunks))
         return "ready"
-    except Exception as e:   # a bad PDF or a missing model must not take anything down
+    except Exception as e:   # a bad file, an OCR failure or a missing key must not take anything down
         log.warning("Could not index file %s: %s", file_id, e)
         try:
             await _status(file_id, "failed")
         except Exception:
             pass
         return "failed"
+    finally:
+        telemetry.current_meter.reset(token)
+        telemetry.current_channel.reset(channel)
+        await usage_ledger.add(user_id, calls)
 
 
 async def forget(user_id: str) -> int:

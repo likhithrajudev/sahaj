@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+import tenancy
 from auth import store, tokens
 
 bearer = HTTPBearer(auto_error=False)
@@ -16,9 +17,10 @@ async def user_from_token(token: Optional[str]) -> store.User:
         raise HTTPException(401, "Missing access token.", headers={"WWW-Authenticate": "Bearer"})
     try:
         claims = tokens.decode_access(token)
-    except store.InvalidToken as e:
+        tenancy.use(claims["tid"])   # everything this request touches is scoped to the caller's tenant, in the database too
+    except (store.InvalidToken, tenancy.TenantError) as e:
         raise HTTPException(401, str(e), headers={"WWW-Authenticate": "Bearer"})
-    user = await store.get_user(claims["sub"])
+    user = await store.get_user(claims["sub"])   # under row-level security: another tenant's user is simply not found
     if user is None:
         raise HTTPException(401, "This account no longer exists.", headers={"WWW-Authenticate": "Bearer"})
     return user

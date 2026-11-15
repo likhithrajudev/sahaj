@@ -31,6 +31,8 @@ async def stream(body: ChatRequest, request: Request, user: User = Depends(curre
     The reply text arrives whole, after the guardrails have passed it; `status` events show progress meanwhile."""
     await registry.sweep()
     entry, created = registry.acquire(user, body.session_id, client_ip(request.scope))
+    if entry is None and body.session_id:   # not held by this worker: carry it on from working memory, if it is there
+        entry, created = await registry.restore(user, body.session_id, client_ip(request.scope))
     if entry is None:
         raise HTTPException(404, "No such conversation. It may have expired: start a new one without session_id.")
     queue: asyncio.Queue = asyncio.Queue()

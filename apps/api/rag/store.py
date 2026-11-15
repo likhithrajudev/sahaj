@@ -64,6 +64,8 @@ async def open_pool() -> None:
             configure=_configure, kwargs={"autocommit": True},
         )
         await _pool.open(wait=True, timeout=10)
+        from tenancy.db import secure
+        await secure(pool())   # tenants, the restricted role, row-level security on every tenant table
     except (psycopg.Error, PoolTimeout, OSError) as e:
         log.warning("Knowledge base unavailable, check DATABASE_URL and that Postgres has pgvector: %s", e)
         _pool = None
@@ -74,38 +76,41 @@ async def close_pool() -> None:
         await _pool.close()
 
 
-def pool() -> AsyncConnectionPool:
+def pool():
+    """The connection pool, wrapped so every connection carries the caller's tenant (see tenancy/db.py)."""
     if _pool is None:
         raise RuntimeError("The knowledge base is unavailable, so I can't answer right now.")
-    return _pool
+    from tenancy.db import TenantPool
+    return TenantPool(_pool)
 
 
-async def existing(domain: str) -> Dict[str, dict]:
+async def existing(domain: str, tenant: str = "public") -> Dict[str, dict]:
     async with pool().connection() as conn:
         cur = await conn.execute(
-            "SELECT doc_id || ':' || clause, content_sha256, embed_model FROM knowledge_chunks WHERE domain = %s",
-            (domain,),
+            "SELECT doc_id || ':' || clause, content_sha256, embed_model FROM knowledge_chunks WHERE domain = %s AND tenant_id = %s",
+            (domain, tenant),
         )
         return {key: {"sha256": sha, "model": model} for key, sha, model in await cur.fetchall()}
 
 
-async def sync(domain: str, chunks: List[dict], keep_keys: List[str]) -> None:
+async def sync(domain: str, chunks: List[dict], keep_keys: List[str], tenant: str = "public") -> None:
     """Upsert `chunks` (each with an `embedding`) and delete clauses no longer in the source documents,
-    so a withdrawn clause can never be served."""
+    so a withdrawn clause can never be served. The documents in knowledge/ belong to the 'public' tenant: every
+    tenant can read them, and a tenant's own documents are added under its id."""
     async with pool().connection() as conn:
         async with conn.transaction():
             for c in chunks:
                 await conn.execute(
-                    """INSERT INTO knowledge_chunks (domain, doc_id, clause, content, content_sha256, embed_model, embedding)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (domain, doc_id, clause) DO UPDATE SET
+                    """INSERT INTO knowledge_chunks (tenant_id, domain, doc_id, clause, content, content_sha256, embed_model, embedding)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (tenant_id, domain, doc_id, clause) DO UPDATE SET
                            content = EXCLUDED.content, content_sha256 = EXCLUDED.content_sha256,
                            embed_model = EXCLUDED.embed_model, embedding = EXCLUDED.embedding, updated_at = now()""",
-                    (domain, c["doc_id"], c["clause"], c["content"], c["sha256"], config.EMBED_MODEL, Vector(c["embedding"])),
+                    (tenant, domain, c["doc_id"], c["clause"], c["content"], c["sha256"], config.EMBED_MODEL, Vector(c["embedding"])),
                 )
             await conn.execute(
-                "DELETE FROM knowledge_chunks WHERE domain = %s AND doc_id || ':' || clause <> ALL(%s)",
-                (domain, keep_keys),
+                "DELETE FROM knowledge_chunks WHERE tenant_id = %s AND domain = %s AND doc_id || ':' || clause <> ALL(%s)",
+                (tenant, domain, keep_keys),
             )
 
 

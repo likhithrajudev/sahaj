@@ -1,5 +1,6 @@
 import base64
 import json
+from typing import Optional
 
 import websockets
 from config import SARVAM_API_KEY, SARVAM_BASE_URL
@@ -41,14 +42,57 @@ BORROWED = {
     "mni-IN": ("Manipuri", None),
 }
 
+SUPPORTED_LANGUAGES = {**{code: value[0] for code, value in VOICES.items()},
+                      **{code: value[0] for code, value in BORROWED.items()}}
+
 
 def resolve_language(code) -> str:
     """The detected language if we support it, otherwise English."""
-    return code if code in VOICES or code in BORROWED else "en-IN"
+    return code if code in SUPPORTED_LANGUAGES else "en-IN"
 
 
 def language_name(code: str) -> str:
-    return (VOICES.get(code) or BORROWED[code])[0]
+    return SUPPORTED_LANGUAGES[resolve_language(code)]
+
+
+def detect_script_language(text: str, preferred: str = "") -> Optional[str]:
+    ranges = (
+        (0x0900, 0x097F, ("hi-IN", "mr-IN", "ne-IN", "mai-IN", "doi-IN", "kok-IN", "sa-IN", "brx-IN")),
+        (0x0980, 0x09FF, ("bn-IN", "as-IN")),
+        (0x0A00, 0x0A7F, ("pa-IN",)),
+        (0x0A80, 0x0AFF, ("gu-IN",)),
+        (0x0B00, 0x0B7F, ("od-IN",)),
+        (0x0B80, 0x0BFF, ("ta-IN",)),
+        (0x0C00, 0x0C7F, ("te-IN",)),
+        (0x0C80, 0x0CFF, ("kn-IN",)),
+        (0x0D00, 0x0D7F, ("ml-IN",)),
+        (0x1C50, 0x1C7F, ("sat-IN",)),
+        (0xABC0, 0xABFF, ("mni-IN",)),
+        (0x0600, 0x06FF, ("ur-IN", "ks-IN", "sd-IN")),
+    )
+    counts = {codes[0]: 0 for _, _, codes in ranges}
+    for char in text:
+        point = ord(char)
+        for start, end, codes in ranges:
+            if start <= point <= end:
+                counts[codes[0]] += 1
+                break
+    if not any(counts.values()):
+        return None
+    dominant = max(counts, key=counts.get)
+    return preferred if preferred in next(codes for _, _, codes in ranges if codes[0] == dominant) else dominant
+
+
+def resolve_text_language(requested: Optional[str], profile: str, text: str) -> str:
+    requested = resolve_language(requested) if requested else ""
+    profile = resolve_language(profile)
+    preferred = requested if requested and requested != "en-IN" else profile
+    detected = detect_script_language(text, preferred=preferred)
+    if detected:
+        return detected
+    if requested and requested != "en-IN":
+        return requested
+    return profile if requested == "en-IN" and profile != "en-IN" else requested or profile
 
 
 async def speak(text: str, language_code: str):

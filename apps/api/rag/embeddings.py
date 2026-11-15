@@ -77,9 +77,12 @@ def _key(text: str) -> str:
 
 
 async def init_cache() -> None:
+    import tenancy
     from rag import store
-    async with store.pool().connection() as conn:
-        await conn.execute(CACHE_SCHEMA)
+    with tenancy.system():
+        async with store.pool().connection() as conn:
+            await conn.execute(CACHE_SCHEMA)
+            await conn.execute(f"GRANT SELECT, INSERT ON embedding_cache TO {config.DB_APP_ROLE}")
 
 
 async def _shared_get(keys: List[str]) -> dict:

@@ -213,6 +213,8 @@ async def with_app(scenario, monkeypatch):
     await pool.open(wait=True)
     monkeypatch.setattr(rag_store, "_pool", pool)
     await store.init_schema()
+    from tests.dbsetup import init_all
+    await init_all()
     await files.init_schema()
     async with pool.connection() as conn:
         await conn.execute("TRUNCATE users CASCADE")
@@ -257,7 +259,7 @@ def test_upload_download_delete_and_isolation(monkeypatch):
         assert r.status_code == 201, r.text
         f = r.json()
         assert f["filename"] == "loan offer.pdf" and f["content_type"] == "application/pdf" and f["size_bytes"] == len(PDF)
-        assert len(blobs.blobs) == 1 and next(iter(blobs.blobs)) .startswith(f"{me['user']['username']}/documents/")
+        assert len(blobs.blobs) == 1 and next(iter(blobs.blobs)) .startswith(f"paytm/{me['user']['username']}/documents/")
 
         got = await c.get(f"/files/{f['id']}", headers=h)
         assert got.status_code == 200 and got.content == PDF and got.headers["content-type"] == "application/pdf"
@@ -331,7 +333,7 @@ def test_withdrawing_consent_and_deleting_the_account_delete_the_files(monkeypat
         await c.put("/files/consent", json={"granted": True}, headers=h)
         await upload(c, h)
         assert (await c.delete("/users/me", headers=h)).status_code == 204
-        assert all(n.startswith(f"{other['user']['username']}/") for n in blobs.blobs) and len(blobs.blobs) == 1
+        assert all(n.startswith(f"paytm/{other['user']['username']}/") for n in blobs.blobs) and len(blobs.blobs) == 1
     asyncio.run(with_app(scenario, monkeypatch))
 
 
@@ -373,10 +375,10 @@ def test_files_land_in_the_persons_folder_by_kind_and_uploads_of_every_kind_work
             r = await c.post("/files", files={"file": (name, data, "application/octet-stream")}, headers=h)   # declared type is ignored
             assert r.status_code == 201, (name, r.text)
             assert r.json()["category"] == category
-        assert all(k.startswith("a/") and k.split("/")[1] in ("documents", "images", "audio") for k in blobs.blobs)
-        assert sorted(k.split("/")[1] for k in blobs.blobs).count("images") == 3
+        assert all(k.startswith("paytm/a/") and k.split("/")[2] in ("documents", "images", "audio") for k in blobs.blobs)
+        assert sorted(k.split("/")[2] for k in blobs.blobs).count("images") == 3
         assert (await c.get("/files?category=image", headers=h)).json()["items"].__len__() == 3
-        assert (await c.get("/files", headers=h)).json()["folder"] == "a/"
+        assert (await c.get("/files", headers=h)).json()["folder"] == "paytm/a/"
         for refused in (b"MZ\x90\x00 program", _zip("a.txt"), b"\x7fELF\x02\x01", b"abc\x00def"):
             assert (await c.post("/files", files={"file": ("x.bin", refused)}, headers=h)).status_code == 415
     asyncio.run(with_app(scenario, monkeypatch))
@@ -437,9 +439,9 @@ def test_recordings_and_transcripts_need_their_own_consent_and_go_with_it(monkey
         await s.on_control(json.dumps({"type": "text", "text": "and my PAN is ABCDE1234F"}))
         keys = sorted(blobs.blobs)
         sid = s.id
-        assert keys == [f"a/transcripts/{sid}/0002.json", f"a/transcripts/{sid}/0003.json", f"a/voice/{sid}/0002.webm"]
-        assert blobs.blobs[f"a/voice/{sid}/0002.webm"][0] == voice and blobs.blobs[f"a/voice/{sid}/0002.webm"][1] == "audio/webm"
-        transcript = json.loads(blobs.blobs[f"a/transcripts/{sid}/0003.json"][0])
+        assert keys == [f"paytm/a/transcripts/{sid}/0002.json", f"paytm/a/transcripts/{sid}/0003.json", f"paytm/a/voice/{sid}/0002.webm"]
+        assert blobs.blobs[f"paytm/a/voice/{sid}/0002.webm"][0] == voice and blobs.blobs[f"paytm/a/voice/{sid}/0002.webm"][1] == "audio/webm"
+        transcript = json.loads(blobs.blobs[f"paytm/a/transcripts/{sid}/0003.json"][0])
         assert transcript["channel"] == "text" and transcript["assistant"] == "The waiting period is 30 days."
         assert "ABCDE1234F" not in json.dumps(transcript) and "[PAN_1]" in transcript["user"]       # masked in the record
 
@@ -457,7 +459,7 @@ def test_recordings_and_transcripts_need_their_own_consent_and_go_with_it(monkey
 
         # withdrawing the recordings consent deletes them, and only them
         out = (await c.put("/consents/conversation_records", json={"granted": False}, headers=h)).json()
-        assert out["erased"] == {"recordings": 3} and sorted(blobs.blobs) == [k for k in sorted(blobs.blobs) if k.startswith("a/documents/")]
+        assert out["erased"] == {"recordings": 3} and sorted(blobs.blobs) == [k for k in sorted(blobs.blobs) if k.startswith("paytm/a/documents/")]
         assert len(blobs.blobs) == 1
         # ... and withdrawing conversation consent takes the recordings consent with it
         await c.put("/consents/conversation_records", json={"granted": True, "version": v("conversation_records")}, headers=h)

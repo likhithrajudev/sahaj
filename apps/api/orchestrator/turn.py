@@ -6,7 +6,7 @@ from typing import Callable, Dict, List, Optional
 class Turn:
     """What the assistant wants to say. The session checks it with the guardrails before anyone sees it."""
     text: str
-    kind: str = "answer"                 # answer | ask | confirm | recommendation | compare
+    kind: str = "answer"                 # answer | ask | confirm | recommendation | compare | command
     agent: str = "insurance"
     sources: Dict[str, str] = field(default_factory=dict)   # what the text may cite
     allow_recommendation: bool = False   # True only for text built from the recommendation engine's facts

@@ -17,7 +17,7 @@ from auth import feedback as feedback_store
 from rag import ingest, store
 from rag.embeddings import warm_up
 from orchestrator import registry
-from routers import audit, auth, chat, consents, desk, feedback, files, ops, stt, usage, users, voice
+from routers import audit, auth, chat, consents, desk, feedback, files, financial, ops, platform, procedures, search, stt, usage, users, voice
 from storage import blob, files as file_store, index as doc_index
 from usage import ledger as usage_ledger
 from desk import store as desk_store
@@ -39,7 +39,9 @@ async def knowledge_base() -> None:
         await embeddings.init_cache()
         if config.AUTO_INGEST:
             await ingest.sync_all()
-        have = await store.stats()
+        import tenancy
+        with tenancy.system():
+            have = await store.stats()
         if not have["clauses"]:
             log.error("The knowledge base is empty. Run `python -m rag.ingest`, or set AUTO_INGEST=true.")
         else:
@@ -67,6 +69,13 @@ async def lifespan(app: FastAPI):
         await doc_index.init_schema()  # passages of uploaded documents
         await usage_ledger.init_schema()  # what each person's calls cost
         await desk_store.init_schema()  # the executive desk: cases and their threads
+        from financial import providers as financial_providers, store as financial_store
+        await financial_store.init_schema()
+        financial_providers.load_configured()
+        from memory import episodic, procedural, semantic
+        await episodic.init_schema()    # memory layer 2: past conversations
+        await semantic.init_schema()    # memory layer 3: facts with embeddings
+        await procedural.init_schema()  # memory layer 4: versioned prompts and workflows
     except auth_store.Unavailable:
         pass
     await knowledge_base()
@@ -92,10 +101,14 @@ app.include_router(files.router)
 app.include_router(feedback.router)
 app.include_router(usage.router)
 app.include_router(desk.router)
+app.include_router(procedures.router)
 app.include_router(chat.router)
 app.include_router(stt.router)
 app.include_router(voice.router)
 app.include_router(audit.router)
+app.include_router(platform.router)
+app.include_router(search.router)
+app.include_router(financial.router)
 
 
 @app.exception_handler(auth_store.Unavailable)

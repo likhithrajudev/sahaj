@@ -50,6 +50,7 @@ ACCESS_TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "15"))
 REFRESH_TOKEN_DAYS = int(os.getenv("REFRESH_TOKEN_DAYS", "30"))
 # OAuth client ids a Google ID token may be issued for (one per platform: web, Android, iOS), comma separated.
 GOOGLE_CLIENT_IDS = [c.strip() for c in os.getenv("GOOGLE_CLIENT_IDS", "").split(",") if c.strip()]
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://127.0.0.1:8000").rstrip("/")
 # Emails that become admins when they sign in. Everyone else is a plain user until an admin changes it.
 ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
 CORS_ORIGINS = [o.strip() for o in (os.getenv("CORS_ORIGINS") or "http://localhost:3000,http://localhost:5173").split(",") if o.strip()]
@@ -139,3 +140,32 @@ DESK_SLA_MINUTES = {"urgent": int(os.getenv("DESK_SLA_URGENT_MINUTES", "5")),
                     "high": int(os.getenv("DESK_SLA_HIGH_MINUTES", "30")),
                     "normal": int(os.getenv("DESK_SLA_NORMAL_MINUTES", "120"))}
 LOW_CONFIDENCE_HANDOFF_AFTER = int(os.getenv("LOW_CONFIDENCE_HANDOFF_AFTER", "2"))   # clarifying questions in a row
+
+# ---- Live insurance web search (Firecrawl). Search is unavailable until a key is set.
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
+FIRECRAWL_BASE_URL = os.getenv("FIRECRAWL_BASE_URL", "https://api.firecrawl.dev/v2").rstrip("/")
+FIRECRAWL_TIMEOUT_SECONDS = int(os.getenv("FIRECRAWL_TIMEOUT_SECONDS", "45"))
+FIRECRAWL_SEARCH_LIMIT = int(os.getenv("FIRECRAWL_SEARCH_LIMIT", "5"))
+FIRECRAWL_PRICE_PER_CREDIT_USD = float(os.getenv("FIRECRAWL_PRICE_PER_CREDIT_USD", "0"))
+FINANCIAL_PROVIDER_MODULES = [m.strip() for m in os.getenv("FINANCIAL_PROVIDER_MODULES", "").split(",") if m.strip()]
+
+# ---- OCR: Sarvam's Document AI (Parse) reads scanned PDFs and photos. Text PDFs are read locally, for free.
+SARVAM_OCR_PRICE_PER_PAGE = float(os.getenv("SARVAM_OCR_PRICE_PER_PAGE", "0.006"))   # USD (about Rs 0.50 a page); estimate
+OCR_TIMEOUT_SECONDS = int(os.getenv("OCR_TIMEOUT_SECONDS", "180"))
+OCR_MAX_PAGES = 30   # Sarvam's limit per document; longer scans are read up to this page
+
+# ---- Multi-tenancy. A person signs in to one tenant (X-Tenant-ID header at sign-in; this one if none is given).
+DEFAULT_TENANT = os.getenv("DEFAULT_TENANT", "paytm")
+DEFAULT_TENANT_NAME = os.getenv("DEFAULT_TENANT_NAME", "Paytm")
+# The restricted Postgres role requests run as, so row-level security applies to them. Created at startup.
+DB_APP_ROLE = os.getenv("DB_APP_ROLE", "sahaj_app")
+
+# ---- Memory layers
+# 1. Working memory: the live state of a conversation (Redis when REDIS_URL is set, else this process), so a conversation
+#    can be resumed after a reconnect or on another worker.
+REDIS_URL = os.getenv("REDIS_URL")
+WORKING_MEMORY_TTL_SECONDS = int(os.getenv("WORKING_MEMORY_TTL_SECONDS", "1800"))
+# 3. Semantic memory: only facts and past episodes at least this similar to the question are recalled.
+SEMANTIC_MIN_SIMILARITY = float(os.getenv("SEMANTIC_MIN_SIMILARITY", "0.25"))
+# 4. Procedural memory: how long a process keeps the active prompts and workflows before re-reading them.
+PROCEDURES_CACHE_SECONDS = int(os.getenv("PROCEDURES_CACHE_SECONDS", "60"))

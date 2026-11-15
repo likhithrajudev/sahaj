@@ -26,21 +26,21 @@ CREATE TABLE IF NOT EXISTS usage_events (
     input_tokens  INT NOT NULL DEFAULT 0,
     output_tokens INT NOT NULL DEFAULT 0,
     cached_tokens INT NOT NULL DEFAULT 0,
-    units         DOUBLE PRECISION NOT NULL DEFAULT 0,   -- seconds of audio (stt) or characters (tts)
+    units         DOUBLE PRECISION NOT NULL DEFAULT 0,   -- seconds of audio (stt), characters (tts) or pages (ocr)
     cost_usd      NUMERIC(14, 8) NOT NULL DEFAULT 0,
     trace_id      TEXT
 );
 CREATE INDEX IF NOT EXISTS usage_events_user_at_idx ON usage_events(user_id, at);
 ALTER TABLE usage_events DROP CONSTRAINT IF EXISTS usage_events_kind_check;
-ALTER TABLE usage_events ADD CONSTRAINT usage_events_kind_check CHECK (kind IN ('llm', 'stt', 'tts', 'embedding'));
+ALTER TABLE usage_events ADD CONSTRAINT usage_events_kind_check CHECK (kind IN ('llm', 'stt', 'tts', 'embedding', 'ocr', 'websearch'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS budget_usd NUMERIC(12, 4);   -- per-person override; NULL = the default
 ALTER TABLE users ALTER COLUMN budget_usd TYPE NUMERIC(12, 4);
 """
 
 
 async def init_schema() -> None:
-    async with db().connection() as conn:
-        await conn.execute(SCHEMA)
+    from tenancy.db import create_tables
+    await create_tables(db(), SCHEMA)
 
 
 def period(now: Optional[datetime] = None) -> Tuple[datetime, datetime]:
@@ -78,10 +78,18 @@ async def spent(user_id: str, since: Optional[datetime] = None) -> float:
 
 
 async def budget(user_id: str) -> float:
-    """What this person may spend per period: their own limit if an admin set one, else the default."""
+    """What this person may spend per period: their own limit if an admin set one, else their tenant's default
+    (tenants.settings.budget_usd), else the platform default."""
     async with db().connection() as conn:
-        row = await (await conn.execute("SELECT budget_usd FROM users WHERE id = %s", (user_id,))).fetchone()
-    return float(row[0]) if row and row[0] is not None else config.USER_BUDGET_USD
+        row = await (await conn.execute("SELECT budget_usd, tenant_id FROM users WHERE id = %s", (user_id,))).fetchone()
+    if row and row[0] is not None:
+        return float(row[0])
+    if row:
+        from tenancy.db import tenant
+        t = await tenant(db(), row[1])
+        if t and isinstance(t["settings"].get("budget_usd"), (int, float)):
+            return float(t["settings"]["budget_usd"])
+    return config.USER_BUDGET_USD
 
 
 async def set_budget(user_id: str, usd: Optional[float]) -> bool:
@@ -103,11 +111,16 @@ async def summary(user_id: str) -> Dict:
         await cur.execute("SELECT count(*) AS calls, COALESCE(sum(input_tokens),0) AS i, COALESCE(sum(output_tokens),0) AS o, "
                           "COALESCE(sum(cached_tokens),0) AS c FROM usage_events WHERE user_id = %s AND at >= %s AND kind = 'llm'", (user_id, start))
         t = await cur.fetchone()
+        await cur.execute("SELECT kind, count(*) AS calls, COALESCE(sum(units),0) AS units FROM usage_events "
+                          "WHERE user_id = %s AND at >= %s GROUP BY kind", (user_id, start))
+        quantities = await cur.fetchall()
     used = sum(breakdown["provider"].values())
     return {"period": {"start": start.isoformat(), "resets_at": reset.isoformat()}, "budget_usd": limit,
             "spent_usd": round(used, 6), "remaining_usd": round(max(limit - used, 0), 6),
             "percent_used": round(100 * used / limit, 1) if limit else None, "enforced": config.BUDGET_ENABLED,
             "model_calls": t["calls"], "tokens": {"input": t["i"], "output": t["o"], "cached_input": t["c"]},
+            "calls_by_kind": {r["kind"]: r["calls"] for r in quantities},
+            "units_by_kind": {r["kind"]: float(r["units"]) for r in quantities},
             "by_provider": breakdown["provider"], "by_kind": breakdown["kind"], "by_purpose": breakdown["purpose"],
             "by_channel": breakdown["channel"], "estimate": True}
 

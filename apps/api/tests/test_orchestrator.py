@@ -124,10 +124,10 @@ def test_term_versus_whole_life_is_an_explanation_not_a_comparison(stubs):
 def test_rates_and_out_of_scope_get_fixed_honest_text_without_the_model(stubs):
     calls, state = stubs
     state["intent"] = Intent(intent="loan_rates_comparison", confidence=0.95)
-    rates, _, _ = run("which bank is cheapest")
+    rates, _, _ = run("will this loan be approved")
     state["intent"] = Intent(intent="out_of_scope", confidence=0.95)
     other, _, _ = run("tell me a joke")
-    assert "don't have current interest rates" in rates["turn"].text and "only help with insurance and loans" in other["turn"].text
+    assert "lender can decide" in rates["turn"].text and "only help with insurance and loans" in other["turn"].text
     assert calls["generate"] == 0   # nothing was improvised
 
 

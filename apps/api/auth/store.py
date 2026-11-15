@@ -30,7 +30,7 @@ class InvalidToken(Exception):
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    google_sub    TEXT NOT NULL UNIQUE,
+    google_sub    TEXT NOT NULL,
     email         TEXT NOT NULL,
     name          TEXT,
     picture       TEXT,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'executive', 'admin'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username);
+-- usernames and Google accounts are unique per tenant: tenancy/db.py creates those indexes
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -80,6 +80,7 @@ class User:
     platform: str
     role: str
     username: Optional[str] = None   # the person's folder in file storage: stable, unique, derived from their email once
+    tenant_id: str = "paytm"          # the organisation this account belongs to; everything they own carries it
 
     @property
     def subject(self) -> str:
@@ -88,14 +89,16 @@ class User:
 
     def public(self) -> dict:
         return {"id": self.id, "email": self.email, "name": self.name, "picture": self.picture,
-                "language": self.language, "platform": self.platform, "role": self.role, "username": self.username}
+                "language": self.language, "platform": self.platform, "role": self.role, "username": self.username,
+                "tenant": self.tenant_id}
 
 
 def _user(row: Optional[dict]) -> Optional[User]:
     if row is None:
         return None
     return User(id=str(row["id"]), email=row["email"], name=row["name"], picture=row["picture"],
-                language=row["language"], platform=row["platform"], role=row["role"], username=row.get("username"))
+                language=row["language"], platform=row["platform"], role=row["role"], username=row.get("username"),
+                tenant_id=row.get("tenant_id") or "paytm")
 
 
 def db():
@@ -106,12 +109,19 @@ def db():
 
 
 async def init_schema() -> None:
+    import tenancy
+    from tenancy.db import secure
     try:
-        async with db().connection() as conn:
-            await conn.execute(SCHEMA)
-            missing = await (await conn.execute("SELECT id, email FROM users WHERE username IS NULL")).fetchall()
-        for user_id, email in missing:   # accounts created before usernames existed
-            await assign_username(str(user_id), email)
+        with tenancy.system():
+            async with db().connection() as conn:
+                await conn.execute(SCHEMA)
+            await secure(db())
+            async with db().connection() as conn:
+                missing = await (await conn.execute("SELECT id, email, tenant_id FROM users WHERE username IS NULL")).fetchall()
+        for user_id, email, tenant_id in missing:   # accounts created before usernames existed
+            if tenancy.valid(tenant_id):
+                with tenancy.as_tenant(tenant_id):
+                    await assign_username(str(user_id), email)
     except Unavailable as e:
         log.warning("%s", e)
 
@@ -171,7 +181,7 @@ async def upsert_google_user(claims: dict, platform: str) -> User:
         await cur.execute(
             """INSERT INTO users (google_sub, email, name, picture, platform, role)
                VALUES (%(sub)s, %(email)s, %(name)s, %(picture)s, %(platform)s, CASE WHEN %(admin)s THEN 'admin' ELSE 'user' END)
-               ON CONFLICT (google_sub) DO UPDATE SET
+               ON CONFLICT (tenant_id, google_sub) DO UPDATE SET
                    email = EXCLUDED.email, picture = EXCLUDED.picture, platform = EXCLUDED.platform, last_login_at = now(),
                    name = COALESCE(users.name, EXCLUDED.name),
                    role = CASE WHEN %(admin)s THEN 'admin' ELSE users.role END
@@ -224,8 +234,17 @@ async def delete_user(user_id: str) -> bool:
 
 
 # ---------- refresh tokens: opaque, stored only as a hash, rotated on every use
+def refresh_tenant(raw: str) -> str:
+    """The tenant a refresh token belongs to: written before its first dot. Tokens from before tenants existed belong
+    to the default tenant."""
+    head, dot, _ = raw.partition(".")
+    import tenancy
+    return head if dot and tenancy.valid(head) else config.DEFAULT_TENANT
+
+
 async def issue_refresh(user_id: str, platform: str, family_id: Optional[str] = None) -> str:
-    raw = secrets.token_urlsafe(48)
+    import tenancy
+    raw = f"{tenancy.get() or config.DEFAULT_TENANT}.{secrets.token_urlsafe(48)}"
     async with db().connection() as conn:
         await conn.execute(
             "INSERT INTO refresh_tokens (user_id, family_id, token_hash, platform, expires_at) VALUES (%s, %s, %s, %s, %s)",

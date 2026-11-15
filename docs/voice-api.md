@@ -5,9 +5,16 @@
 Talk to Sahaj by voice about insurance policies and loan offers. The client records the user's speech and sends it. The server replies with the transcript, a cited text answer and the answer as spoken audio. Sahaj routes each question to an insurance or loan specialist, and every turn passes consent, PII masking, answer-checking guardrails and an audit trail.
 
 - **Voice endpoint:** `ws://127.0.0.1:8000/ws/voice` (use `wss://` in production)
+- **Streaming voice endpoint:** `ws://127.0.0.1:8000/ws/voice/stream` (use `wss://` in production)
 - **Interactive REST docs:** `http://127.0.0.1:8000/docs`
 - **Sign-in required:** see [Authentication](#authentication)
 - **Try it by hand:** run the API and open `http://127.0.0.1:8000/test/` (a test console covering sign-in, chat over WebSocket or SSE, memory, files and feedback)
+
+## Streaming microphone sessions
+
+`/ws/voice/stream` keeps one authenticated voice session open while the client sends binary audio chunks. The client sends `{"type":"audio_end"}` at each speech boundary; Sahaj transcribes and responds, then accepts the next segment on the same connection. `{"type":"audio_cancel"}` discards the current segment. Chunks for one segment must belong to the same WebM/Opus recording, and each segment is capped at `MAX_UPLOAD_BYTES`.
+
+This protocol lets a client use voice activity detection and keep the microphone open without a press-and-hold key. Microphone permission and speech-boundary detection run in the client; the existing `/test/` console still uses `/ws/voice` and has not been changed.
 
 ## Talking to a person (customer executive desk)
 
@@ -34,7 +41,7 @@ Some conversations need a person: when the customer asks, when they complain or 
 Every model call, speech-to-text request and text-to-speech request a person causes is recorded with its estimated cost in US dollars. Each person may spend **$5 a month** by default (calendar month, UTC); an admin can change it per person.
 
 - **Which model answers:** voice conversations go through Sarvam end to end (speech-to-text, the answer, and speech). Typed conversations (socket `text` messages and `/chat/stream`) are answered by OpenAI (`gpt-4o-mini`), whose prompt cache is shared across users: in testing, 57% of input tokens on a second question came from it. The knowledge base is searched with OpenAI embeddings either way.
-- `GET /users/me/usage`: `budget_usd`, `spent_usd`, `remaining_usd`, `percent_used`, the period (`start`, `resets_at`), token totals, and the spend `by_provider`, `by_kind` (llm, stt, tts), `by_purpose` and `by_channel`. `estimate: true`: figures come from configured prices, not an invoice.
+- `GET /users/me/usage`: `budget_usd`, `spent_usd`, `remaining_usd`, `percent_used`, the period (`start`, `resets_at`), token totals, call and unit counts by kind, and the spend `by_provider`, `by_kind` (llm, stt, tts, embedding, ocr, websearch), `by_purpose` and `by_channel`. `estimate: true`: figures come from configured prices, not an invoice. Firecrawl cost is recorded using `FIRECRAWL_PRICE_PER_SEARCH_USD`.
 - **Near the limit** (80%), the socket sends `{"type":"usage_warning","spent_usd","budget_usd","percent_used"}` once per conversation.
 - **Over the limit**, a turn is refused before anything is spent: `{"type":"budget_exceeded","spent_usd","budget_usd","resets_at"}` followed by an `error`. Show when it renews.
 - **Admins:** `GET /admin/usage` (this month's top spenders), `PATCH /admin/users/{id}/budget` with `{"budget_usd": 10}` (or `null` for the default).
@@ -68,12 +75,15 @@ Sahaj signs people in with Google and then uses its own JWTs. `/ws/voice`, `/use
 4. When it expires, `POST /auth/refresh` with `{"refresh_token": "..."}` returns a new pair. **A refresh token works once**: store the new one every time. Reusing an old one signs that device out everywhere.
 5. `POST /auth/logout` with the refresh token signs the device out (204).
 
+`GET /auth/config` returns the public API base URL, Google web client ID and authorized JavaScript origin. The local console uses `http://127.0.0.1:8000` as its origin. This is an ID-token flow: there is no redirect URI to register in Google Cloud Console. For production, set `PUBLIC_API_URL` to the API's public origin and register that origin as an authorized JavaScript origin on the Google **Web application** client. Register each scheme/host/port that serves a web client; do not add `/auth/google` as a redirect URI.
+
 **WebSocket.** Browsers cannot set headers on a WebSocket, so connect with `ws://.../ws/voice?access_token=<access_token>` (non-browser clients can send the `Authorization` header instead). If the token is missing, invalid or expired the server closes the socket with code **4401**: refresh the token and reconnect. Check the token is fresh before connecting, because URLs are logged.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /users/me` | The profile (`id, email, name, picture, language, platform, role`) and `memory_consent`. |
 | `PATCH /users/me` | Update `name`, `language` (for example `hi-IN`) or `platform`. |
+| `GET /languages` | Supported Indian language tags and whether native or borrowed speech output is available. |
 | `DELETE /users/me` | Delete the account, its sign-ins and everything remembered (204). |
 | `GET /admin/users`, `PATCH /admin/users/{id}/role` | Admin only. Roles are `user` and `admin`. |
 
@@ -88,11 +98,11 @@ Signed-in users can store documents (a loan offer, a policy). Files are private:
 
 ### Asking questions about your own documents
 
-A second consent, `document_analysis`, lets Sahaj read uploaded **PDFs** (not images or scans: there is no OCR) so questions can be asked about them.
+A second consent, `document_analysis`, lets Sahaj read uploaded **PDFs and photos** (PNG, JPEG) so questions can be asked about them. PDFs with a text layer are read on our servers; scanned PDFs and photos are read by **Sarvam's Document AI (OCR)**, up to 30 pages per document. WebP and GIF images are stored but not read.
 
 1. `GET /files` returns `analysis_consent` and `analysis_consent_text`. Show the text verbatim, then `PUT /files/analysis/consent` with `{"granted": true}` (needs the `documents` consent first). That reads the PDFs already stored; new uploads are read straight away.
-2. Each file's `index_status` goes `indexing` then `ready` (or `empty`, `unsupported`, `failed`). Poll `GET /files` until it is `ready`.
-3. Then just ask in chat, for example *"What is the prepayment charge in my offer?"*. Answers cite the person's own passages as `mydoc-<id>:p<page>.<n>`, and `structured.sources[].text` begins with the file name and page. Identifiers such as PAN, Aadhaar, phone and account numbers are masked **before** a passage is stored or shown to the AI model.
+2. Each file's `index_status` goes `indexing` then `ready` (or `empty`, `unsupported`, `over_budget` when the person's monthly limit is used up, or `failed`). Poll `GET /files` until it is `ready`. OCR pages and embeddings are charged to the person (`by_kind.ocr`, `by_channel.documents` in `/users/me/usage`).
+3. Then just ask in chat, for example *"What is the prepayment charge in my offer?"* or *"What is the total on my hospital bill?"*. Answers cite the person's own passages as `mydoc-<id>:p<page>.<n>`, and `structured.sources[].text` begins with the file name and page. Identifiers such as PAN, Aadhaar, phone and account numbers are masked **before** a passage is stored or shown to the AI model (Sarvam's OCR, which reads the image, sees the page as it is: the consent text says so).
 4. Withdrawing `document_analysis` forgets everything learned (the files stay). Withdrawing `documents` or deleting the account removes it all. Replies that used a person's documents are never cached or shared.
 
 Sahaj does not virus-scan uploaded files.
@@ -132,7 +142,11 @@ POST /chat/stream
 → data: {"type":"user",...}  {"type":"status",...}  {"type":"assistant",...}  {"type":"done"}
 ```
 
-Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
+Each `data:` line is one of the WebSocket events below, and the stream ends when the turn is finished. `message` accepts `text`, `consent` and `handoff`. On text messages only, `/help`, `/usage`, `/clear`, and `/language <code>` are handled as shortcuts without a model call; they do not run on audio turns. Conversations are kept for 30 minutes of inactivity (at most 5 per person); an unknown or expired `session_id` returns 404, so start a new one. `DELETE /chat/{session_id}` ends one and saves memory if allowed. Sessions live in one server process, so run a single worker or route a session's requests to the same one.
+
+### Live insurance search
+
+When the user asks for current insurers, products, or insurance platforms, typed chat can search Firecrawl's `/v2/search` using India-focused web and news results, then return source-tagged claims with URLs. Set `FIRECRAWL_API_KEY` to enable it. `POST /search/insurance` offers the same search to authenticated clients with `{"query":"health insurance platforms in India","limit":5}`. Queries are PII-masked before they leave Sahaj. Search calls and Firecrawl credits are counted as `websearch` in the user's ledger; configure `FIRECRAWL_PRICE_PER_CREDIT_USD` for estimated provider cost and budget enforcement. The direct endpoint returns 503 when Firecrawl is not configured and 502 when Firecrawl is unavailable.
 
 ## Trust badge and follow-ups
 

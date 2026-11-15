@@ -12,8 +12,9 @@ import config
 from advisory.flow import AdviceFlow
 from auth.store import Unavailable, User
 from loan.flow import LoanCalc
-from memory import service as memory, store as memory_store
+from memory import episodic, procedural, semantic, service as memory, store as memory_store, working
 from orchestrator import structure, suggest
+from orchestrator import commands
 from orchestrator.graph import GRAPH
 from orchestrator.turn import Turn
 from observability import metrics, tracing
@@ -21,7 +22,7 @@ from services import telemetry
 from storage import records
 from usage import ledger as usage_ledger, pricing
 from services.stt import transcribe_audio
-from services.tts import language_name, resolve_language, speak
+from services.tts import SUPPORTED_LANGUAGES, language_name, resolve_language, resolve_text_language, speak
 from observability.metrics import CONSENT_EVENTS
 from desk import escalation, live as desk_live, store as desk
 from trust import consent, consents, guardrails, handoff
@@ -41,9 +42,12 @@ class Session:
     """One conversation. The LangGraph orchestrator (orchestrator/graph.py) decides what to say; this class handles
     the connection: consent, speech in and out, history, and handing over to a person."""
 
-    def __init__(self, ws: WebSocket, user: User, ip: Optional[str] = None):
+    def __init__(self, ws: WebSocket, user: User, ip: Optional[str] = None, resume: Optional[str] = None):
+        from datetime import datetime, timezone
         self.ws = ws
         self.user = user
+        self.started_at = datetime.now(timezone.utc)
+        self._resume = resume                 # a session id whose working memory to pick up, after a dropped connection
         self.ip = ip                        # recorded (hashed) with consent decisions made on this connection
         self._warned = False                # told the person they are close to their spending limit, once
         self._audio: Optional[bytes] = None   # this turn's recording, kept only if the person allows recordings
@@ -67,6 +71,7 @@ class Session:
         self.focus = []                          # plans just recommended or compared: what "the first one" means
 
     async def start(self, ask_consent: bool = True) -> None:
+        resumed = await self.restore(self._resume) if self._resume else False
         await self._load_memory()
         consent.attest(self.id, self.user.subject, self._attested)
         desk_live.join_customer(self.user.id, self)
@@ -75,14 +80,35 @@ class Session:
         except Exception as e:
             log.warning("Could not check for an open case: %s", e)
         await self.ws.send_json({"type": "session", "id": self.id, "user": self.user.public(),
-                                 "memory": self.memory is not None, "case": self._case_view()})
+                                 "memory": self.memory is not None, "case": self._case_view(), "resumed": resumed})
         if ask_consent:
             await self._has_consent()
+
+    def snapshot(self) -> dict:
+        """Working memory: what is needed to carry this conversation on elsewhere. Masked history only; no identifiers
+        and no needs-analysis or calculator figures."""
+        return {"session_id": self.id, "user_id": self.user.id, "history": self.history, "last_intent": self.last_intent,
+                "focus": self.focus, "clarifications": self.clarifications, "turns": self._turns, "channel": self.channel,
+                "started_at": self.started_at.isoformat()}
+
+    async def restore(self, session_id: str) -> bool:
+        """Pick up a conversation from working memory (this person's own only: the key includes tenant and user)."""
+        from datetime import datetime
+        state = await working.load(self.user, session_id)
+        if not state or state.get("user_id") != self.user.id:
+            return False
+        self.id = session_id
+        self.history, self.last_intent, self.focus = state["history"], state["last_intent"], state["focus"]
+        self.clarifications, self._turns, self.channel = state["clarifications"], state["turns"], state["channel"]
+        self.started_at = datetime.fromisoformat(state["started_at"])
+        return True
 
     async def close(self) -> None:
         """The connection ended: remember what is worth remembering, if the person allows it. The model call this makes
         is counted against the person like any other."""
         desk_live.leave_customer(self.user.id, self)
+        import tenancy
+        tenancy.use(self.user.tenant_id)   # close() can be called from another request (an idle sweep): act as this person's tenant
         if not self.history or not consent.is_active(self.user.subject, "memory"):
             return
         telemetry.current_channel.set(self.channel)
@@ -90,7 +116,7 @@ class Session:
         calls: list = []
         telemetry.current_meter.set(calls)
         try:
-            await memory.remember(self.user.id, self.history)
+            await memory.remember_conversation(self)   # episodic (what happened) + semantic (stable facts)
         except (httpx.HTTPError, psycopg.Error, RuntimeError, Unavailable) as e:
             log.warning("Could not save memory: %s", e)
         finally:
@@ -100,7 +126,7 @@ class Session:
         self.memory = None
         if not consent.is_active(self.user.subject, "memory"):
             return
-        try:
+        try:   # the recent picture at the start; each turn then recalls what bears on its own question
             self.memory = memory.render(await memory_store.for_prompt(self.user.id))
         except (psycopg.Error, RuntimeError, Unavailable) as e:
             log.warning("Could not load memory: %s", e)
@@ -169,19 +195,69 @@ class Session:
         While a person is handling the conversation, it goes to them instead of the AI."""
         if self.case:
             return await self._relay(text)
-        if not await self._has_consent() or not await self._within_budget():
-            return
         self.speaking, self.channel = speak_reply, "text"
         self._audio = None
-        lang = resolve_language(language or self.user.language)
+        lang = resolve_text_language(language, self.user.language, text)
+        if commands.parse(text):
+            return await self._guarded(lambda trace: self._typed(text, lang, trace))
+        if not await self._has_consent() or not await self._within_budget():
+            return
         await self._guarded(lambda trace: self._typed(text, lang, trace))
 
     async def _typed(self, text: str, lang: str, trace: Trace) -> None:
         masked = self.vault.mask(normalise_digits(text.strip()))
         trace.add("text", language=lang, text=masked)
         await self.ws.send_json({"type": "user", "text": masked})
+        command = commands.parse(masked)
+        if command:
+            return await self._run_command(command, lang, trace)
         if not await self._escalated(masked, lang, trace):
             await self._respond(masked, lang, trace)
+
+    async def _run_command(self, command: commands.Command, lang: str, trace: Trace) -> None:
+        from auth import store
+        from usage import ledger as usage_ledger
+
+        names = ", ".join(f"{code} ({name})" for code, name in SUPPORTED_LANGUAGES.items())
+        if command.name not in commands.COMMANDS:
+            reply = "Unknown shortcut. Use /help to see the available text commands."
+        elif command.name == "/help":
+            reply = "Text shortcuts: /usage shows this month's usage and budget; /clear starts a fresh conversation; " \
+                    "/language lists supported languages; /language <code> changes your preferred language."
+        elif command.name == "/language":
+            if not command.argument:
+                reply = f"Supported languages: {names}"
+            else:
+                language = resolve_language(command.argument)
+                if language != command.argument:
+                    reply = f"Unsupported language code. Supported languages: {names}"
+                else:
+                    self.user = await store.update_profile(self.user.id, {"language": language}) or self.user
+                    reply = f"Preferred language changed to {language} ({SUPPORTED_LANGUAGES[language]})."
+        elif command.name == "/clear":
+            await working.drop(self.user, self.id)
+            self.history.clear()
+            self.last_intent = None
+            self.focus = []
+            self.flow = self.calc = self.pending = None
+            self.memory = None
+            self.clarifications = self.failures = 0
+            reply = "Conversation context cleared."
+        else:
+            try:
+                summary = await usage_ledger.summary(self.user.id)
+                searches = summary.get("calls_by_kind", {}).get("websearch", 0)
+                credits = summary.get("units_by_kind", {}).get("websearch", 0)
+                reply = (f"Usage this month: ${summary['spent_usd']:.4f} of ${summary['budget_usd']:.2f}; "
+                         f"${summary['remaining_usd']:.4f} remaining. {summary['model_calls']} model calls; "
+                         f"{summary['tokens']['input'] + summary['tokens']['output']} tokens; {searches} web searches "
+                         f"({credits:g} Firecrawl credits). "
+                         f"Resets {summary['period']['resets_at'][:10]} UTC. Estimates only.")
+            except Exception:
+                reply = "Usage is temporarily unavailable. Try again shortly."
+        trace.add("command", name=command.name if command.name in commands.COMMANDS else "unknown")
+        turn = Turn(text=reply, kind="command", agent="general", judge=False, prechecked=True)
+        await self._deliver(turn, None, command.name, lang, trace, persist=command.name not in ("/usage", "/help", "/language", "/clear"))
 
     # ---------- inbound: one recorded utterance ----------
     async def on_audio(self, audio: bytes) -> None:
@@ -201,6 +277,8 @@ class Session:
         telemetry.current_channel.set(self.channel)   # voice -> Sarvam, typed -> OpenAI
         calls: list = []
         telemetry.current_meter.set(calls)       # every billable call of this turn lands here
+        await procedural.refresh()               # procedural memory: this tenant's active prompts and workflows
+        trace.add("procedures", versions=procedural.versions())
         started, outcome = time.perf_counter(), "ok"
         try:
             await work(trace)
@@ -213,6 +291,8 @@ class Session:
             metrics.TURN_SECONDS.labels(self.channel).observe(time.perf_counter() - started)
             await usage_ledger.add(self.user.id, [{**c, "trace_id": trace.id} for c in calls])   # what this turn cost, even a failed one
             trace.save()
+            if self.history and consent.is_active(self.user.subject, "conversation"):
+                await working.save(self.user, self.id, self.snapshot())   # working memory: resumable from here
 
     async def _status(self, stage: str) -> None:
         """Progress for the UI: transcribing -> thinking -> checking -> speaking. Carries no content."""
@@ -233,8 +313,16 @@ class Session:
             await self._respond(text, lang, trace)
 
     # ---------- deciding what to say: the graph ----------
+    async def _recall(self, text: str) -> None:
+        """Semantic memory: the remembered facts and past conversations that bear on this question."""
+        if consent.is_active(self.user.subject, "memory"):
+            recalled = await semantic.recall(self.user.id, text)
+            if recalled:
+                self.memory = recalled
+
     async def _respond(self, text: str, lang: str, trace: Trace) -> None:
         await self._status("thinking")
+        await self._recall(text)
         result = None
         async for mode, chunk in GRAPH.astream(
             {"text": text, "lang": lang, "language": language_name(lang), "path": []},
@@ -258,7 +346,8 @@ class Session:
             await self._handoff("low_confidence", trace, note=text)
 
     # ---------- delivering ----------
-    async def _deliver(self, turn: Turn, problem: Optional[str], text: str, lang: str, trace: Trace) -> None:
+    async def _deliver(self, turn: Turn, problem: Optional[str], text: str, lang: str, trace: Trace,
+                       persist: bool = True) -> None:
         """Send, speak and remember a reply that the graph has already checked."""
         if turn.request_consent:
             await self.ws.send_json({"type": "consent_required", **consent.required(turn.request_consent)})
@@ -277,10 +366,11 @@ class Session:
         # The history feeds hand-off packets, so personal answers are replaced by a placeholder.
         remembered_user = "[gave personal details]" if turn.sensitive_input else text
         remembered_reply = "[read back the person's details]" if turn.kind == "confirm" else guardrails.strip_citations(shown)
-        self.history = (self.history + [
-            {"role": "user", "content": remembered_user, "intent": self.last_intent},
-            {"role": "assistant", "content": remembered_reply},  # tags would prime cross-agent citations
-        ])[-MAX_MESSAGES:]
+        if persist:
+            self.history = (self.history + [
+                {"role": "user", "content": remembered_user, "intent": self.last_intent},
+                {"role": "assistant", "content": remembered_reply},
+            ])[-MAX_MESSAGES:]
 
         if turn.card:  # structured data is deterministic, so it is shown even if the narration was blocked
             if "plans" in turn.card:  # what "the first one" means in the next question
@@ -310,10 +400,11 @@ class Session:
             if sent:
                 telemetry.record_speech("tts", len(spoken_text), pricing.tts_cost(len(spoken_text)))
 
-        self._turns += 1   # kept before `done`, so a client that lists its files on `done` sees this turn's records
-        await records.save_turn(self.user, self.id, self._turns, audio=self._audio if self.channel == "voice" else None,
-                                user_text=remembered_user, reply=remembered_reply, language=lang, channel=self.channel,
-                                intent=self.last_intent, trace_id=trace.id)
+        if persist:
+            self._turns += 1
+            await records.save_turn(self.user, self.id, self._turns, audio=self._audio if self.channel == "voice" else None,
+                                    user_text=remembered_user, reply=remembered_reply, language=lang, channel=self.channel,
+                                    intent=self.last_intent, trace_id=trace.id)
         self._audio = None
         await self.ws.send_json({"type": "done"})
 
@@ -335,6 +426,9 @@ class Session:
         if not consent.is_active(subject, "needs_analysis"):
             self.flow = self.pending = None
         if not consent.is_active(subject, "conversation"):
+            if self.history:
+                import asyncio
+                asyncio.get_event_loop().create_task(working.drop(self.user, self.id))   # nothing left to resume
             self.calc = self.flow = self.pending = None
             self.history.clear()
             self.vault.clear()

@@ -12,8 +12,8 @@ from orchestrator.prompts import CLASSIFIER_SYSTEM, CLASSIFIER_USER
 from services import cache, llm
 
 IntentName = Literal[
-    "insurance_explain", "insurance_advice", "insurance_compare",
-    "loan_explain", "loan_calculator", "loan_guidance", "loan_rates_comparison",
+    "insurance_explain", "insurance_advice", "insurance_compare", "insurance_purchase", "insurance_fine_print", "insurance_web_search",
+    "loan_explain", "loan_calculator", "loan_guidance", "loan_rates_comparison", "loan_web_search", "loan_application", "credit_check", "loan_fine_print",
     "human_handoff", "greeting", "out_of_scope",
 ]
 INTENTS = IntentName.__args__
@@ -64,7 +64,8 @@ async def classify(text: str, previous: Optional[str], in_flow: bool, asking: Op
     which the graph treats as 'ask the user to clarify' rather than guessing."""
     if not in_flow and (quick := fast_intent(text)):
         return quick
-    messages = PROMPT.format_messages(system=CLASSIFIER_SYSTEM, previous=previous or "none",
+    from memory import procedural
+    messages = PROMPT.format_messages(system=procedural.text("intent.classifier"), previous=previous or "none",
                                       in_flow="yes" if in_flow else "no", asking=asking or "nothing", message=text)
     plain = [{"role": {"system": "system", "human": "user"}[m.type], "content": m.content} for m in messages]
     use_cache = cache.CLASSIFIER_CACHE if config.APP_CACHE_ENABLED and not in_flow and not _looks_personal(text) else None

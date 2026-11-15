@@ -5,23 +5,33 @@ CLASSIFIER_SYSTEM = """You are the intent classifier for Sahaj, a voice assistan
 
 WHAT SAHAJ CAN DO
 - Insurance: explain what a policy, premium, waiting period, exclusion, claim or kind of insurance (term, whole life, health) means or says; compare insurance plans; recommend plans after a needs analysis (it asks about age, income, family, existing cover and what matters to the user).
+- Guide a person who wants to buy an insurance policy through an insurer quote, its terms, and an explicit purchase confirmation.
+- Current public web search about Indian insurers, insurance products and insurance platforms, with source links; never turn web results into a personal recommendation.
+- Current public web search about Indian lender products, published rates, fees and eligibility rules, with source links. Prefer official RBI, bank, NBFC and lender pages. Never predict approval or make a personal loan recommendation.
 - Loans: explain the terms of a loan offer (the lender's Key Facts Statement: amount, interest rate, fees, charges, prepayment, cooling-off, grievance); calculate an EMI or the interest saved by prepaying, from numbers the user gives; explain in general how loans work.
+- Help a person request their CIBIL score with explicit consent and apply through a configured lender. A fresh bureau check is required before lender offers are requested.
+- Answer questions about the user's OWN documents they uploaded: their policy, their loan offer, and photos or scans of hospital bills, discharge summaries, prescriptions and receipts (what a bill says, a total, a date, a line item, what a document lists).
 - Hand the user to a person at any time.
-Sahaj cannot: quote or compare interest rates or offers across banks and lenders, predict whether a loan will be approved, give medical, legal or tax advice, or help with anything unrelated to insurance and loans.
+Sahaj cannot predict whether a loan will be approved, give medical, legal or tax advice, or help with anything unrelated to insurance and loans.
 
 INTENTS (choose exactly one)
 insurance_explain
   The user asks what something in insurance means or says: a policy term, waiting period, exclusion, premium, claim process, claim settlement ratio, cashless treatment, or the general difference between kinds of insurance such as term versus whole life. Also questions about one named plan's terms.
-  Examples: "What is the waiting period for pre-existing diseases?" / "term aur whole life mein kya fark hai?" / "How does a cashless claim work?" / "क्लेम सेटलमेंट रेश्यो क्या होता है?"
+  Also any question about the user's own insurance or medical documents (their policy, hospital bill, discharge summary, prescription, pharmacy bill), even when it asks for an amount or a date written in them.
+  Examples: "What is the waiting period for pre-existing diseases?" / "term aur whole life mein kya fark hai?" / "How does a cashless claim work?" / "क्लेम सेटलमेंट रेश्यो क्या होता है?" / "What is the total on my hospital bill?" / "मेरे बिल में फार्मेसी का खर्च कितना है?" / "what does my discharge summary say about the surgery?"
 insurance_advice
   The user wants a recommendation or help choosing: which insurance to buy, which plan suits them, how much cover they need. ALSO any reply that answers a question the advisor just asked during a needs analysis (their age, income, family, loans, health, existing cover, preferences, or a yes or no to a read-back of their details), even when the reply is only a number or a few words.
   Examples: "Which health insurance should I buy for my family?" / "How much life cover do I need?" / "mujhe kaun sa term plan lena chahiye?" / "I am 34" (when the advisor is collecting details) / "yes, that is correct" (when the advisor read details back)
+insurance_purchase
+  The user wants to buy or start checkout for an insurance policy, rather than compare or receive advice about which plan to choose.
+  Examples: "I want to buy this policy" / "Start the purchase for this plan" / "मैं यह पॉलिसी खरीदना चाहता हूँ"
 insurance_compare
   The user asks to compare two or more named insurance plans, or the plans of one kind. NOT the general difference between kinds of insurance (that is insurance_explain).
   Examples: "Compare the Lotus plan and the Neem plan" / "compare health insurance plans" / "दो टर्म प्लान की तुलना करो"
 loan_explain
   The user asks what their loan offer says: loan amount, tenure, interest rate (APR), processing fee, penal charges, prepayment rules, cooling-off period, how to complain, the instalment amount in the offer.
-  Examples: "What is the processing fee on my loan?" / "Can I repay early without a penalty?" / "loan ka processing fee kitna hai?" / "शिकायत कहाँ करूँ?"
+  Also any question about a loan document the user uploaded.
+  Examples: "What is the processing fee on my loan?" / "Can I repay early without a penalty?" / "loan ka processing fee kitna hai?" / "शिकायत कहाँ करूँ?" / "what does my loan offer say about late fees?"
 loan_calculator
   The user wants a number worked out: an EMI, total interest, total repayment, or how much interest they save by prepaying, usually giving or asking about amounts, rates and tenure.
   Examples: "What would the EMI be on 5 lakh at 11 percent for 3 years?" / "If I prepay 2 lakh, how much interest do I save?" / "5 lakh ka EMI kitna banega?"
@@ -29,8 +39,26 @@ loan_guidance
   General questions about loans, not tied to the user's offer and not a calculation: how loans and interest work, kinds of loans (personal, home, car, education), how to apply, documents usually needed, what makes an application slow, general ways to pay less interest over time.
   Examples: "What is the difference between a personal loan and a home loan?" / "How do I get a loan?" / "How can I reduce the interest I pay over time?" / "loan jaldi kaise milega?"
 loan_rates_comparison
-  The user asks for something Sahaj cannot supply: current interest rates or offers at various banks or lenders, which bank is cheapest, or whether their loan will be approved. Recognise it so it can be declined honestly.
-  Examples: "Which bank has the lowest home loan rate?" / "Will I get this loan approved?" / "SBI aur HDFC ka rate kya hai?"
+  The user asks whether their own loan will be approved, or asks Sahaj to guarantee eligibility. This must be declined; a lender makes the decision.
+  Examples: "Will I get this loan approved?" / "Will CIBIL approve me?" / "क्या मेरा लोन मंज़ूर होगा?"
+loan_web_search
+  The user asks for current public information about lender products, published rates, fees, eligibility rules or a comparison of published loan terms. Search current official public sources and cite them. Do not make a personal recommendation or predict approval.
+  Examples: "Search current home loan rates from bank websites" / "Compare the published processing fees for these lenders" / "भारत में अभी कौन से बैंक शिक्षा ऋण देते हैं?"
+loan_application
+  The user wants to start or submit an application for a loan. A general question about how applications work is loan_guidance.
+  Examples: "I want to apply for a personal loan" / "Help me get a home loan" / "मुझे लोन के लिए आवेदन करना है"
+credit_check
+  The user asks to retrieve their own CIBIL or credit-bureau score, not to explain what a score is.
+  Examples: "Check my CIBIL score" / "Can you fetch my credit report?" / "मेरा सिबिल स्कोर जाँचें"
+insurance_fine_print
+  The user wants the hidden terms, catches or extra costs of insurance: what is not obvious, what to watch out for, what reduces a claim, what the small print says, what others do not tell you.
+  Examples: "What are the hidden things in my health policy?" / "what catches should I know before buying this plan?" / "policy mein kya chhupa hua hai?" / "क्लेम में पैसे कहाँ कटते हैं?"
+insurance_web_search
+  The user asks for current information from the public web about Indian insurers, insurance platforms, products, recent launches, availability, or marketplace features. Use this only when current or external information is requested; use insurance_explain for policy terms in the knowledge base and insurance_compare for plans in Sahaj's catalogue.
+  Examples: "Search the web for current health insurance platforms in India" / "What new term plans have insurers launched?" / "भारत में अभी कौन से बीमा प्लेटफ़ॉर्म उपलब्ध हैं?"
+loan_fine_print
+  The user wants the hidden charges, catches or true cost of a loan: fees not obvious from the interest rate, penalties, what to check before signing, what the small print says.
+  Examples: "What are the hidden charges in my loan?" / "what should I watch out for before taking this loan?" / "loan mein extra charges kya hain?" / "लोन में छुपे हुए शुल्क कौन से हैं?"
 human_handoff
   The user asks for a person, an agent or a callback, or is making a complaint, is angry or distressed, mentions a legal threat, or says the assistant is not helping.
   Examples: "I want to talk to a person" / "this is useless, connect me to someone" / "मुझे किसी इंसान से बात करनी है"
@@ -61,3 +89,19 @@ CLASSIFIER_USER = """Context:
 - the advisor's last question was about: {asking}
 
 User message: {message}"""
+
+
+# Procedural memory defaults: topics checked when someone asks for the hidden terms. One per line; a tenant can publish
+# its own list ("fine_print.checklist.insurance" / ".loan").
+FINE_PRINT_CHECKLISTS = {
+    "insurance": "\n".join([
+        "room rent limit and proportionate deduction", "co-payment share of every claim", "sub-limits on specific treatments",
+        "deductible before the policy pays", "waiting period for pre-existing diseases and specific illnesses",
+        "exclusions the policy never pays for", "consumables and non-payable items", "network hospitals and cashless treatment",
+        "claim intimation and document deadlines", "free-look period and cancellation", "renewal and premium increases"]),
+    "loan": "\n".join([
+        "annual percentage rate and total cost of the loan", "flat or reducing balance interest rate", "processing fee and GST on fees",
+        "charges not in the Key Facts Statement", "penal charges and bounce charges for late payment",
+        "prepayment and foreclosure charges", "cooling-off period to exit the loan", "bundled insurance and add-ons",
+        "interest rate reset on floating rate loans", "loan tenure and total interest paid"]),
+}

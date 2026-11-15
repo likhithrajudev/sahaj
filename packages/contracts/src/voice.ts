@@ -6,7 +6,7 @@
 import type { User } from "./http";
 
 /** "memory" belongs to the signed-in person (it applies across conversations); the others to one conversation. */
-export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis";
+export type ConsentPurpose = "conversation" | "needs_analysis" | "memory" | "documents" | "document_analysis" | "conversation_records" | "video_kyc" | "financial_application" | "credit_bureau";
 export type AgentName = "insurance" | "loan" | "general";
 export type HandoffReason = "user_requested" | "guardrail_failures" | "stuck_in_questions" | "low_confidence" | "complaint" | "distress" | "video_kyc" | "callback";
 
@@ -57,6 +57,9 @@ export interface TextMessage {
 }
 
 export type ClientMessage = ConsentMessage | HandoffRequest | HandoffCancel | TextMessage;
+
+/** Stream endpoint controls. Audio arrives in binary WebSocket frames until audio_end or audio_cancel. */
+export type VoiceStreamControl = { type: "audio_end" } | { type: "audio_cancel" };
 
 // ---------- Server -> client (JSON text frames; MP3 chunks arrive as binary frames) ----------
 
@@ -125,7 +128,7 @@ export interface UserEvent {
 
 /** The reply split into statements, each with the sources behind it. Built from the verified `text`, nothing added. */
 export interface StructuredReply {
-  kind: "answer" | "ask" | "confirm" | "recommendation" | "compare";
+  kind: "answer" | "ask" | "confirm" | "recommendation" | "compare" | "command";
   /** The first statement: a one-line headline. */
   summary: string;
   points: { text: string; sources: string[] }[];
@@ -215,11 +218,21 @@ export interface CalcCard {
   result: Record<string, unknown>;
 }
 
+export interface FinancialWorkflowCard {
+  type: "financial_workflow";
+  action: "insurance_purchase" | "loan_application" | "credit_check";
+  providers: string[];
+  endpoints: string[];
+  consent: { purpose: ConsentPurpose; title: string; version: string; text: string; [key: string]: unknown };
+  requires_user_confirmation: true;
+}
+
 export interface CardPayloads {
   profile_summary: ProfileSummaryCard;
   recommendation: RecommendationCard;
   comparison: ComparisonCard;
   calc: CalcCard;
+  ask: FinancialWorkflowCard;
 }
 
 export type CardKind = keyof CardPayloads;

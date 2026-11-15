@@ -141,8 +141,8 @@ def model(*, cache=None, **overrides) -> ChatSarvam:
     optionally, a LangChain cache."""
     session = telemetry.current_session.get()
     if provider_for(telemetry.current_channel.get()) == "openai":
-        return ChatOpenAI(api_key=config.OPENAI_API_KEY, affinity=session, cache=cache if cache is not None else False, **overrides)
-    return ChatSarvam(api_key=config.SARVAM_API_KEY, affinity=session, cache=cache if cache is not None else False, **overrides)
+        return ChatOpenAI(api_key=config.OPENAI_API_KEY or "", affinity=session, cache=cache if cache is not None else False, **overrides)
+    return ChatSarvam(api_key=config.SARVAM_API_KEY or "", affinity=session, cache=cache if cache is not None else False, **overrides)
 
 
 async def chat(messages: List[dict], *, purpose: str = "llm", cache=None) -> str:

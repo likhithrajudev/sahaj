@@ -20,8 +20,8 @@ CREATE INDEX IF NOT EXISTS reply_feedback_rating_idx ON reply_feedback(rating, c
 
 
 async def init_schema() -> None:
-    async with db().connection() as conn:
-        await conn.execute(SCHEMA)
+    from tenancy.db import create_tables
+    await create_tables(db(), SCHEMA)
 
 
 async def save(user_id: str, trace_id: str, rating: str, comment: Optional[str]) -> None:

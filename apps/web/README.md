@@ -2,27 +2,34 @@
 
 Mobile-first PWA for Sahaj: React 19, Vite, TypeScript, Tailwind v4, shadcn/ui, Motion, Zustand, TanStack Query.
 
-The UI in `src/App.tsx` and `src/components/conversation/` is **temporary**: it works end to end (consent, voice,
-cards, citations, handoff, reconnects) so the flow can be tested on real phones, and gets replaced by the designs.
-The parts that stay:
+The UI implements the Claude Design file (v2, Paytm-inspired palette, direction 1a "chat timeline"). The export
+lives in `docs/design/<export>/` and is git-ignored; open its `Sahaj Design v2.dc.html` over HTTP to view it.
 
-| File | What it does |
+| Path | What it is |
 |---|---|
-| `src/lib/socket.ts` | `/ws/voice` client: same origin, `wss://` on https, reconnect with backoff |
+| `src/index.css` | Design tokens (light + dark), type, radii, motion. Re-skin by changing `--brand-*` |
+| `src/lib/i18n.ts` | Interface text in English and Hindi (menu → App language). Conversation text is never translated |
+| `src/components/conversation/` | Timeline, bubbles (fallback, clarify, text-only), dock with every voice state |
+| `src/components/cards/` | EMI, prepayment, comparison (table/list), profile summary, recommendation, needs consent, handoff |
+| `src/components/sheets/` | Consent, citations, mic explainer/blocked, menu + withdraw, install, about |
 | `src/lib/session.ts` | Controller: socket events → store, push-to-talk, consent, handoff, playback |
-| `src/store/session.ts` | Zustand store: connection, consent, turn state, timeline |
-| `src/lib/audio/recorder.ts` | Mic recording (WebM on Chrome/Android, MP4 on iPhone), 30 s limit |
-| `src/lib/audio/player.ts` | Reply playback that works on iPhone (see below) |
-| `src/pwa.ts` | Service worker registration, install prompt |
-| `mock/server.mjs` | Mock backend speaking the real protocol, for UI work |
+| `src/store/session.ts`, `src/store/ui.ts` | Zustand: conversation state; UI preferences (persisted) and open sheets |
+| `src/lib/socket.ts` | `/ws/voice` client: same origin, `wss://` on https, reconnect with backoff |
+| `src/lib/audio/` | Recorder (WebM or iPhone MP4, level meter, 30 s limit) and iPhone-safe playback |
+| `mock/server.mjs` | Mock backend speaking the real protocol, scripted through every design state |
+| `scripts/icons.sh` | Rebuilds the self-hosted Material Symbols subset when you use a new icon |
+| `public/*.png` | App icons rendered from the Anek स mark (committed; no font needed at build time) |
 
 Types come from `@sahaj/contracts`. The live conversation goes through the socket and the Zustand store;
-TanStack Query is only for REST calls.
+TanStack Query is only for REST calls. Below 1024 px the layout is the phone design; from 1024 px cards open in a
+"Latest card" side panel and the dock floats (hold Space to talk).
 
 ## Run
 
 ```bash
-pnpm dev:mock        # mock backend + Vite: no Sarvam / Postgres / model needed
+pnpm dev:mock        # mock backend + Vite: no Sarvam / Postgres / model needed. Each recording
+                     # advances a scripted demo: EMI, citations, comparison, prepayment, clarify,
+                     # fallback, text-only (Urdu), needs analysis → recommendation
 pnpm dev:web         # Vite only; proxies /ws, /stt and /health to the real API on :8000 (pnpm dev:api)
 pnpm --filter @sahaj/web build && pnpm --filter @sahaj/web preview   # production build with service worker, :4173
 ```

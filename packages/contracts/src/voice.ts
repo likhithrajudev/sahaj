@@ -21,9 +21,22 @@ export type InsuranceGoal = "health" | "term" | "whole_life";
 export interface Citation {
   /** Tag as it appears in the answer text without brackets, e.g. "health-lotus-care:3.2". */
   id: string;
-  /** The clause (or computed fact) the tag points to. */
+  /** The full clause (or computed fact) the tag points to. */
   text: string;
+  /** Document name for display, e.g. "Lotus Care (SAMPLE)", "Loan calculation". */
+  doc: string;
+  /** Clause number ("3.2") and title for document clauses; null for facts the code computed. */
+  clause: string | null;
+  title: string | null;
+  /** The clause text without its number and title. */
+  body: string;
 }
+
+/** What produced an assistant message. */
+export type ReplyKind = "answer" | "ask" | "confirm" | "recommendation" | "compare" | "calc";
+
+/** What the server is doing during a turn (for "Finding the right documents…" style hints). */
+export type StatusStep = "understanding" | "searching" | "comparing" | "calculating" | "thinking" | "checking";
 
 // ---------------------------------------------------------------- client -> server
 // Audio: send one complete recording (max 30 s, webm/opus) as a binary frame, only after done/error/handoff.
@@ -75,6 +88,18 @@ export interface AssistantEvent {
   text: string;
   citations: Citation[];
   trace_id: string;
+  /** "ask" = Sahaj is asking a question (clarifying, or the next needs-analysis question). */
+  kind: ReplyKind;
+  /** True when the checks blocked the answer and this is the safe "I can't confirm that…" reply. */
+  fallback: boolean;
+  /** Needs analysis only: which question this is, for "Understanding your needs · 4 of 9". */
+  progress?: { step: number; total: number };
+}
+
+/** Sent while a turn is being worked on, possibly several times. Ignore unknown steps. */
+export interface StatusEvent {
+  type: "status";
+  step: StatusStep;
 }
 
 export interface DoneEvent {
@@ -219,7 +244,8 @@ export type ServerEvent =
   | AssistantEvent
   | DoneEvent
   | HandoffEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | StatusEvent;
 
 export type ServerEventType = ServerEvent["type"];
 export type ServerEventOf<T extends ServerEventType> = Extract<ServerEvent, { type: T }>;
@@ -259,4 +285,5 @@ const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set<ServerEventType>([
   "done",
   "handoff",
   "error",
+  "status",
 ]);

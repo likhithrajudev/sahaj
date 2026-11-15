@@ -1,4 +1,5 @@
 import { MAX_RECORDING_SECONDS } from "@sahaj/contracts";
+import { setAudioSession } from "./player";
 
 /**
  * Push-to-talk recorder.
@@ -35,12 +36,18 @@ export class Recorder {
   private finished: Promise<Blob | null> | null = null;
   private cancelled = false;
 
-  /** Starts recording. Resolves once the mic is live. Call from a pointer/keyboard handler. */
-  async start(onLimit?: () => void): Promise<void> {
+  private meter: { ctx: AudioContext; raf: number } | null = null;
+
+  /**
+   * Starts recording. Resolves once the mic is live. Call from a pointer/keyboard handler.
+   * `onLevel` receives the input loudness (0..1) about 30 times a second, when the browser allows measuring it.
+   */
+  async start(onLimit?: () => void, onLevel?: (level: number) => void): Promise<void> {
     if (!window.isSecureContext) throw new MicUnavailable("insecure");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       throw new MicUnavailable("unsupported");
     }
+    setAudioSession("auto"); // let iOS switch to play-and-record for the capture
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -66,6 +73,7 @@ export class Recorder {
       };
     });
     this.recorder.start();
+    if (onLevel) this.startMeter(this.stream, onLevel);
     this.limitTimer = setTimeout(() => onLimit?.(), MAX_RECORDING_SECONDS * 1000 - 250);
   }
 
@@ -87,7 +95,34 @@ export class Recorder {
     return this.stream;
   }
 
+  private startMeter(stream: MediaStream, onLevel: (level: number) => void) {
+    try {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new Ctx();
+      void ctx.resume().catch(() => {});
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (const v of data) sum += ((v - 128) / 128) ** 2;
+        onLevel(Math.min(1, Math.sqrt(sum / data.length) * 4)); // speech RMS is ~0.05-0.25
+        if (this.meter) this.meter.raf = requestAnimationFrame(tick);
+      };
+      this.meter = { ctx, raf: requestAnimationFrame(tick) };
+    } catch {
+      this.meter = null; // no level: the UI animates the bars on its own
+    }
+  }
+
   private release() {
+    if (this.meter) {
+      cancelAnimationFrame(this.meter.raf);
+      void this.meter.ctx.close().catch(() => {});
+      this.meter = null;
+    }
     if (this.limitTimer) clearTimeout(this.limitTimer);
     this.limitTimer = null;
     this.stream?.getTracks().forEach((t) => t.stop());

@@ -1,94 +1,222 @@
 @import "tailwindcss";
 
-/* Placeholder tokens (shadcn naming). Replace with the design system's values when the designs arrive. */
-:root {
-  --radius: 0.75rem;
-  --background: oklch(0.99 0.003 95);
-  --foreground: oklch(0.22 0.02 200);
-  --card: oklch(1 0 0);
-  --card-foreground: var(--foreground);
-  --popover: var(--card);
-  --popover-foreground: var(--foreground);
-  --primary: oklch(0.33 0.05 195);           /* deep teal */
-  --primary-foreground: oklch(0.98 0.01 95);
-  --secondary: oklch(0.95 0.01 190);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(0.96 0.005 95);
-  --muted-foreground: oklch(0.48 0.02 200);
-  --accent: oklch(0.8 0.14 75);              /* marigold, for the talk button */
-  --accent-foreground: oklch(0.25 0.05 60);
-  --destructive: oklch(0.58 0.2 27);
-  --border: oklch(0.91 0.01 200);
-  --input: var(--border);
-  --ring: var(--primary);
+/*
+ * Sahaj design tokens (docs/design/.../sahaj-paytm-tokens.css + "01 · Foundations").
+ * Brand colours live in --brand-*; change those three to re-skin. Everything else derives from them.
+ */
+@font-face {
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: block;
+  src: url("./assets/fonts/material-symbols-rounded-subset.woff2") format("woff2");
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.18 0.015 200);
-    --foreground: oklch(0.95 0.01 95);
-    --card: oklch(0.22 0.015 200);
-    --primary: oklch(0.75 0.08 190);
-    --primary-foreground: oklch(0.18 0.02 200);
-    --secondary: oklch(0.27 0.02 200);
-    --muted: oklch(0.25 0.015 200);
-    --muted-foreground: oklch(0.7 0.02 200);
-    --border: oklch(0.32 0.02 200);
-  }
+:root {
+  --brand-navy: #012a72;
+  --brand-cyan: #00b8f5;
+  --brand-action: #004299;
+
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #ecf2f8;
+  --surface-muted: #f0f3f7;
+  --line: #ebebeb;
+  --line-2: #d5dce5;
+  --control-line: #aab5c4;
+  --ink: #282828;
+  --ink-2: #414244;
+  --ink-3: #666666;
+  --primary: var(--brand-action);
+  --primary-strong: var(--brand-navy);
+  --primary-soft: color-mix(in srgb, var(--primary) 8%, #ffffff);
+  --on-primary: #ffffff;
+  --talk: var(--brand-action);
+  --talk-ring: color-mix(in srgb, var(--talk) 20%, transparent);
+  --talk-glow: color-mix(in srgb, var(--talk) 42%, transparent);
+  --accent: var(--brand-cyan);
+  --mark: var(--brand-action);
+  --sample-soft: #fff1d6;
+  --sample-ink: #7a4a00;
+  --loan: #0f766e;
+  --loan-soft: #dff3f0;
+  --success: #127a4b;
+  --success-soft: #e2f4ea;
+  --error: #c0262d;
+  --error-soft: #fbe6e6;
+  --error-ink: #8c1d22;
+  --info: #1e5a8c;
+  --info-soft: #e3eef7;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0d9;
+  --toast: #282828;
+  --toast-ink: #ffffff;
+  --bubble: var(--primary);
+  --on-bubble: #ffffff;
+  --scrim: rgb(40 48 60 / 0.45);
+  --shadow-dock: 0 -10px 28px -18px rgb(40 40 40 / 0.25);
+  --shadow-sheet: 0 -12px 40px -16px rgb(16 24 40 / 0.3);
+  color-scheme: light;
+}
+
+/* Navy-black surfaces, lifted blue for actions, no pure black. data-theme is set from the menu or the system
+   preference (src/lib/theme.ts). */
+:root[data-theme="dark"] {
+  --bg: #0b1526;
+  --surface: #122039;
+  --surface-2: #182a46;
+  --surface-muted: #16253f;
+  --line: #2e415d;
+  --line-2: #2e415d;
+  --control-line: #526780;
+  --ink: #edf3fc;
+  --ink-2: #b8c7da;
+  --ink-3: #93a7c0;
+  --primary: #8fc9ff;
+  --primary-strong: #cfe6ff;
+  --primary-soft: #193558;
+  --on-primary: #0b1526;
+  --talk: #1576db;
+  --talk-ring: color-mix(in srgb, #1576db 24%, transparent);
+  --talk-glow: color-mix(in srgb, #1576db 42%, transparent);
+  --mark: var(--brand-navy);
+  --sample-soft: #3a2e14;
+  --sample-ink: #f2c979;
+  --loan: #5fd4c4;
+  --loan-soft: #10302d;
+  --success: #7cd3a3;
+  --success-soft: #133325;
+  --error: #f0958c;
+  --error-soft: #3a1f22;
+  --error-ink: #f6b8b1;
+  --info: #8dbee6;
+  --info-soft: #16263a;
+  --warn: #e5b95a;
+  --warn-soft: #3a2e14;
+  --toast: #edf3fc;
+  --toast-ink: #0b1526;
+  --bubble: #1e3f68;
+  --on-bubble: #edf3fc;
+  --scrim: rgb(2 8 18 / 0.6);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --font-sans: "Noto Sans Variable", "Noto Sans Devanagari Variable", "Noto Sans Bengali Variable",
-    "Noto Sans Tamil Variable", "Noto Sans Telugu Variable", "Noto Sans Kannada Variable",
-    "Noto Sans Gujarati Variable", "Noto Sans Gurmukhi Variable", "Noto Sans Malayalam Variable",
-    "Noto Sans Oriya Variable", system-ui, sans-serif;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
+  --font-sans: "Anek Latin Variable", "Anek Devanagari Variable", "Anek Bangla Variable", "Anek Tamil Variable",
+    "Anek Telugu Variable", "Anek Kannada Variable", "Anek Malayalam Variable", "Anek Gujarati Variable",
+    "Anek Gurmukhi Variable", "Anek Odia Variable", "Noto Naskh Arabic Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-muted: var(--surface-muted);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-control-line: var(--control-line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
   --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+  --color-talk: var(--talk);
+  --color-talk-ring: var(--talk-ring);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-mark: var(--mark);
+  --color-sample-soft: var(--sample-soft);
+  --color-sample-ink: var(--sample-ink);
+  --color-loan: var(--loan);
+  --color-loan-soft: var(--loan-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-error-ink: var(--error-ink);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-toast: var(--toast);
+  --color-toast-ink: var(--toast-ink);
+  --color-bubble: var(--bubble);
+  --color-on-bubble: var(--on-bubble);
+
+  /* radius scale: chip 6 · control 14 · card 20 · sheet 28 */
+  --radius-chip: 6px;
+  --radius-control: 14px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+
+  --shadow-dock: var(--shadow-dock);
+  --shadow-sheet: var(--shadow-sheet);
+  --shadow-talk: 0 10px 22px -8px var(--talk-glow);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: var(--line);
   }
   html {
     -webkit-text-size-adjust: 100%;
     height: 100%;
+    background: var(--bg);
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-bg text-ink font-sans antialiased;
     height: 100%;
-    overscroll-behavior: none; /* no rubber-band bounce in the installed app */
+    font-size: 17px;
+    line-height: 25px;
+    font-variant-numeric: tabular-nums;
+    overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
   #root {
     height: 100dvh;
   }
   button {
-    touch-action: manipulation; /* no double-tap zoom delay */
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  /* Indic and Arabic scripts sit taller: +4px leading (Foundations). */
+  :lang(hi), :lang(mr), :lang(ta), :lang(te), :lang(kn), :lang(ml), :lang(bn), :lang(gu), :lang(pa), :lang(or), :lang(ur) {
+    line-height: 1.7;
   }
 }
 
-/* Hold-to-talk: stop iOS from selecting text or showing the long-press callout while the button is held. */
+/* Material Symbols Rounded, 400 weight, 24px. Filled only for the active mic and stop. */
+.icon {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  flex: none;
+  user-select: none;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+.icon-fill {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* Hold-to-talk: no long-press callout or text selection on iOS while the button is held. */
 .no-callout {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -97,8 +225,33 @@
 }
 
 .pt-safe { padding-top: env(safe-area-inset-top); }
-.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.75rem); }
-.px-safe {
-  padding-left: max(env(safe-area-inset-left), 1rem);
-  padding-right: max(env(safe-area-inset-right), 1rem);
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+.px-gutter {
+  padding-left: max(env(safe-area-inset-left), 16px);
+  padding-right: max(env(safe-area-inset-right), 16px);
+}
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Thinking: three dots breathe in turn, 1.4 s loop. */
+@keyframes breathe {
+  0%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.dot-breathe { animation: breathe 1.4s infinite ease-in-out; }
+.dot-breathe:nth-child(2) { animation-delay: 0.2s; }
+.dot-breathe:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes shimmer {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+.skeleton { background: var(--surface-2); animation: shimmer 1.6s infinite; border-radius: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-breathe, .skeleton { animation: none; }
+  .dot-breathe:nth-child(2) { opacity: 0.55; }
+  .dot-breathe:nth-child(3) { opacity: 0.25; }
 }

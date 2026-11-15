@@ -29,3 +29,6 @@ dist/
 
 # Local runtime data (api)
 *.db
+
+# Claude Design export: local reference only (see docs/design/web-design-brief.md)
+docs/design/*/

@@ -6,7 +6,23 @@
  *   the talk button. unlock() runs during the press and plays a silent clip on one long-lived <audio>
  *   element; iOS then lets that same element play later without a gesture.
  * - An <audio> element (unlike Web Audio) still plays when the ring/silent switch is on silent.
+ * - The audio session is switched to "playback" only after the mic is released (see setAudioSession), so the
+ *   reply uses the loudspeaker and recording is never disturbed.
  */
+
+type AudioSessionType = "auto" | "playback" | "play-and-record";
+
+/** iOS 17+ Safari: how our audio mixes with the system. No-op elsewhere. */
+export function setAudioSession(type: AudioSessionType) {
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (session) {
+    try {
+      session.type = type;
+    } catch {
+      /* not allowed right now; the default works */
+    }
+  }
+}
 
 /** A valid 50 ms silent WAV, built in code so there is no opaque base64 to trust. */
 function silentWav(): string {
@@ -31,29 +47,35 @@ function silentWav(): string {
   return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
 
+export interface PlayCallbacks {
+  onProgress?: (elapsed: number, duration: number) => void;
+  onEnd?: () => void;
+}
+
 class Player {
   private el: HTMLAudioElement | null = null;
   private silence: string | null = null;
   private chunks: BlobPart[] = [];
-  private lastUrl_: string | null = null;
-  private onEnd: (() => void) | null = null;
+  private lastUrl: string | null = null;
+  private cb: PlayCallbacks = {};
+  private muted_ = false;
 
   private element(): HTMLAudioElement {
     if (!this.el) {
-      this.el = new Audio();
-      this.el.setAttribute("playsinline", "");
-      this.el.preload = "auto";
-      this.el.onended = () => this.ended();
-      this.el.onerror = () => this.ended();
+      const el = new Audio();
+      el.setAttribute("playsinline", "");
+      el.preload = "auto";
+      el.onended = () => this.ended();
+      el.onerror = () => this.ended();
+      el.ontimeupdate = () => this.progress();
+      el.onloadedmetadata = () => this.progress();
+      this.el = el;
     }
     return this.el;
   }
 
   /** Call synchronously inside a pointerdown/keydown handler, before any await. */
   unlock(): void {
-    // iOS 17+: treat our audio as media playback, not an ambient sound
-    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
-    if (session) session.type = "playback";
     const el = this.element();
     if (!el.paused) return;
     this.silence ??= silentWav();
@@ -65,28 +87,49 @@ class Player {
     this.chunks.push(chunk);
   }
 
+  get hasPending(): boolean {
+    return this.chunks.length > 0;
+  }
+
   /** Drops chunks of an unfinished reply (e.g. after an error). */
   discard(): void {
     this.chunks = [];
   }
 
-  /**
-   * Plays the collected chunks. Returns the reply's URL (keep it for replay), or null if there was no audio.
-   * `onEnd` fires when playback ends, fails, or is stopped.
-   */
-  async playCollected(onEnd?: () => void): Promise<string | null> {
+  get muted(): boolean {
+    return this.muted_;
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted_ = muted;
+    if (this.el) this.el.muted = muted;
+  }
+
+  /** Plays the collected chunks. Returns the reply's URL (keep it for replay), or null if there was no audio. */
+  async playCollected(cb: PlayCallbacks = {}): Promise<string | null> {
     if (!this.chunks.length) return null;
     const url = URL.createObjectURL(new Blob(this.chunks, { type: "audio/mpeg" }));
     this.chunks = [];
-    if (this.lastUrl_) URL.revokeObjectURL(this.lastUrl_); // one reply's audio kept at a time
-    this.lastUrl_ = url;
-    await this.play(url, onEnd);
+    if (this.lastUrl) URL.revokeObjectURL(this.lastUrl); // one reply's audio kept at a time
+    this.lastUrl = url;
+    await this.play(url, cb);
     return url;
   }
 
   /** Replays a reply. Call from a tap, so it is always allowed. */
-  replay(url: string, onEnd?: () => void): Promise<boolean> {
-    return this.play(url, onEnd);
+  replay(url: string, cb: PlayCallbacks = {}): Promise<boolean> {
+    return this.play(url, cb);
+  }
+
+  /** Length of an audio URL in seconds (for "Replay · 0:18"). */
+  static duration(url: string): Promise<number | null> {
+    return new Promise((resolve) => {
+      const probe = new Audio();
+      probe.preload = "metadata";
+      probe.onloadedmetadata = () => resolve(Number.isFinite(probe.duration) ? probe.duration : null);
+      probe.onerror = () => resolve(null);
+      probe.src = url;
+    });
   }
 
   stop(): void {
@@ -94,10 +137,12 @@ class Player {
     this.ended();
   }
 
-  private async play(url: string, onEnd?: () => void): Promise<boolean> {
+  private async play(url: string, cb: PlayCallbacks): Promise<boolean> {
     this.stop();
-    this.onEnd = onEnd ?? null;
+    this.cb = cb;
+    setAudioSession("playback"); // the mic is released by now: use the loudspeaker
     const el = this.element();
+    el.muted = this.muted_;
     el.src = url;
     try {
       await el.play();
@@ -108,11 +153,19 @@ class Player {
     }
   }
 
+  private progress() {
+    const el = this.el;
+    if (!el || !this.cb.onProgress || el.src === this.silence) return;
+    const duration = Number.isFinite(el.duration) ? el.duration : 0;
+    this.cb.onProgress(el.currentTime, duration);
+  }
+
   private ended() {
-    const cb = this.onEnd;
-    this.onEnd = null;
-    cb?.();
+    const cb = this.cb;
+    this.cb = {};
+    cb.onEnd?.();
   }
 }
 
 export const player = new Player();
+export const audioDuration = Player.duration;

@@ -16,34 +16,40 @@ importers:
 
   apps/web:
     dependencies:
-      '@fontsource-variable/noto-sans':
+      '@fontsource-variable/anek-bangla':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-bengali':
+      '@fontsource-variable/anek-devanagari':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-devanagari':
+      '@fontsource-variable/anek-gujarati':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-gujarati':
+      '@fontsource-variable/anek-gurmukhi':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-gurmukhi':
+      '@fontsource-variable/anek-kannada':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-kannada':
+      '@fontsource-variable/anek-latin':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-malayalam':
+      '@fontsource-variable/anek-malayalam':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-oriya':
+      '@fontsource-variable/anek-odia':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-tamil':
+      '@fontsource-variable/anek-tamil':
         specifier: ^5.3.0
         version: 5.3.0
-      '@fontsource-variable/noto-sans-telugu':
+      '@fontsource-variable/anek-telugu':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/jetbrains-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/noto-naskh-arabic':
         specifier: ^5.3.0
         version: 5.3.0
       '@sahaj/contracts':
@@ -58,9 +64,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      lucide-react:
-        specifier: ^1.73.0
-        version: 1.73.0(@types/react@19.3.0)(react@19.3.1)
       motion:
         specifier: ^14.14.0
         version: 14.14.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -98,9 +101,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
-      '@vite-pwa/assets-generator':
-        specifier: ^2.0.0
-        version: 2.0.0(@types/node@26.6.6)
       '@vitejs/plugin-react':
         specifier: ^6.3.0
         version: 6.3.0(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2))
@@ -664,35 +664,41 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@fontsource-variable/noto-sans-bengali@5.3.0':
-    resolution: {integrity: sha512-035m0mzOcsVC1GHFH1ioeXjIFqVhuflGvnn8Xvr6esaZlGErNe1d+Jx2sEN/2WGPhjrT+5wwKPPSO8rbBeQo3w==}
+  '@fontsource-variable/anek-bangla@5.3.0':
+    resolution: {integrity: sha512-OekuT8LFbA86VSfLjv6I6V2SS5owqTN+NHmhsr+3qHpCr4oqehkjvgDGuAyPH65BOIqVme0eLK7c2Ucml9gblg==}
 
-  '@fontsource-variable/noto-sans-devanagari@5.3.0':
-    resolution: {integrity: sha512-52XBcJS3jRvZ5ugFXJvdKgffXPYnN08LeodXkgCbepOdMKVRVTQu1yj071cq8S3zmUwT6w6XKKXRSQlQkwwNNg==}
+  '@fontsource-variable/anek-devanagari@5.3.0':
+    resolution: {integrity: sha512-mng3nw6XK5/5agZqIgCHcspyYbXe5HcF3F6b8J3v7He3Ilk4Mp7/irelZnCNde1rPg2JSiC7LeuI9Y9DcZk4yw==}
 
-  '@fontsource-variable/noto-sans-gujarati@5.3.0':
-    resolution: {integrity: sha512-fmQPxALCXOCe6FKaI9ZRu3R28BkhhEWQ3H8QMVCB3xRo6I7iwCZ2KunlIDPAfIDee3cYwucus5ORRqAFa62Ekg==}
+  '@fontsource-variable/anek-gujarati@5.3.0':
+    resolution: {integrity: sha512-GtBN+reElKGGx3GyOPeoGdrNiZx7uegRSEkCaGSssx3X9ED4c86N9n+HEkFyeNbnDkfkjXFh3tA1efB2fjwASw==}
 
-  '@fontsource-variable/noto-sans-gurmukhi@5.3.0':
-    resolution: {integrity: sha512-JNLyLBtmTUzNwRlnkYqliOHTOMt0PCGXWf5sWRShoki/ADGdjPDVEFPwe/Y7KnjG8ijCQZrMuqvj/jHkYd3Ptg==}
+  '@fontsource-variable/anek-gurmukhi@5.3.0':
+    resolution: {integrity: sha512-j5DL4NrRRayz3qdFr/VsFuWpEpMmF5zv/mXp+Mtq6IYiSxuhppt0wPwex9Kwe2wmeSMDNlR91nJmOcOyCHWcAw==}
 
-  '@fontsource-variable/noto-sans-kannada@5.3.0':
-    resolution: {integrity: sha512-Vywk0r0v6GBEp+smJbSEEdUSebQb1hLsTOWqt/yHcABhkTRphga67hgtUhAenNtgLoFWAw/OV/cuN5Trdzpg5w==}
+  '@fontsource-variable/anek-kannada@5.3.0':
+    resolution: {integrity: sha512-Uvz2uR6aWvI4kRUAyO6BnghMSFs+R8xCR8C/FjBBPPA2UDuuyFm+3oTKSPns8u2SW0Axj8+MKN7xGASe+ke78g==}
 
-  '@fontsource-variable/noto-sans-malayalam@5.3.0':
-    resolution: {integrity: sha512-SKo5dwznLLyLC97M3d8FVmgUylNzI3TkVUshjFM1InaRvRI9S/GGRfWzSs2DlL/9tZU1/fU1GsQi+PjkQlMQGQ==}
+  '@fontsource-variable/anek-latin@5.3.0':
+    resolution: {integrity: sha512-NqJVtTUYWkPMPXsEy4Ve/xRnXrKLw/gfUYzLidSsdJAMEgNsRNYpJZkorD/xDyBS2mxhfu/y6KsWTetowCQjrQ==}
 
-  '@fontsource-variable/noto-sans-oriya@5.3.0':
-    resolution: {integrity: sha512-+RfEqSVMMYXbCFQI5D6eKUMK87Ad7nrzY+7UnQdbu6AtKZ866fjJP88ymW6lXo/D19uSL6SzeJYM3CSOx/tKQQ==}
+  '@fontsource-variable/anek-malayalam@5.3.0':
+    resolution: {integrity: sha512-FJ9fo4s7OQ53mR0h5ndtRa9MkQLKo2fkChH8u87Tl40sQPBby5vzSqDA8PVm8HdS2zUhomRNAt2AFfWVd9SHXg==}
 
-  '@fontsource-variable/noto-sans-tamil@5.3.0':
-    resolution: {integrity: sha512-zyyajkRVJb7Uy6T2+ws2hR+0U7FnJqMfzakls3WgWNZ4ia0EFHLyFAHLZdUV5yiFzHufc701KOxktrwrI3J7FQ==}
+  '@fontsource-variable/anek-odia@5.3.0':
+    resolution: {integrity: sha512-uYYVPGuKhnsQwN0k2U58iMUhDEXMJ9HKkRyLeKJsfd4g8yt8Zuqvj0E+lxdUZZSujsWLHsLxHbK6M8vl+MT4gA==}
 
-  '@fontsource-variable/noto-sans-telugu@5.3.0':
-    resolution: {integrity: sha512-dxmjmdqbAeRYppM94/3zJLQm1sT88n6N56JKMMpxlEobrbv7SmIjnAzMF0LOge5+iVcInqmdQLuJQwiWT1YBcg==}
+  '@fontsource-variable/anek-tamil@5.3.0':
+    resolution: {integrity: sha512-gIYFuSE22Piov6heULEv29zjPR/vSiMoGxwiJh+NuZa7kWDtm+K2x8VjCY1ph+ACN/ACS9cGPSTwDfc+mLvW4A==}
 
-  '@fontsource-variable/noto-sans@5.3.0':
-    resolution: {integrity: sha512-e3ZuxzY9AL2psXPZlhwhnYrHUHv6PMoyK9MQ7croF0CUgURLqu9EMjW7q2FgVLwij1tjLsIHQrnwQ8aUcg4BiA==}
+  '@fontsource-variable/anek-telugu@5.3.0':
+    resolution: {integrity: sha512-0mMvBxwEi7qd3G8Q1MVx1Yzm5HQBb0Y5RMftKwageWsKW5Loocu+pv/qon8LUwUJTvFg8ZLA0EAS4KvyS2tEHg==}
+
+  '@fontsource-variable/jetbrains-mono@5.3.0':
+    resolution: {integrity: sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==}
+
+  '@fontsource-variable/noto-naskh-arabic@5.3.0':
+    resolution: {integrity: sha512-Ot0G5iln5MeLPKp1WNt6AGi4KHbPIVm0GEow2ED6rZ+8Rao+OuswhX4D+RPerc3aQ6teneLdqXSL8VPGorJvGg==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2609,15 +2615,6 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
-  lucide-react@1.73.0:
-    resolution: {integrity: sha512-fVOzGviL9mTfHenG1PbCfIceavyGlnpYNSYr+aGZHLRymAJ7DTP6KHuqt0uBkCKAoenr1UVkwSbDIYt2xIesEQ==}
-    peerDependencies:
-      '@types/react': '*'
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -3917,7 +3914,8 @@ snapshots:
       '@babel/helper-string-parser': 7.29.14
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@canvas/image-data@1.1.0': {}
+  '@canvas/image-data@1.1.0':
+    optional: true
 
   '@emnapi/core@2.0.0-beta.2':
     dependencies:
@@ -3957,27 +3955,32 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@fontsource-variable/noto-sans-bengali@5.3.0': {}
+  '@fontsource-variable/anek-bangla@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-devanagari@5.3.0': {}
+  '@fontsource-variable/anek-devanagari@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-gujarati@5.3.0': {}
+  '@fontsource-variable/anek-gujarati@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-gurmukhi@5.3.0': {}
+  '@fontsource-variable/anek-gurmukhi@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-kannada@5.3.0': {}
+  '@fontsource-variable/anek-kannada@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-malayalam@5.3.0': {}
+  '@fontsource-variable/anek-latin@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-oriya@5.3.0': {}
+  '@fontsource-variable/anek-malayalam@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-tamil@5.3.0': {}
+  '@fontsource-variable/anek-odia@5.3.0': {}
 
-  '@fontsource-variable/noto-sans-telugu@5.3.0': {}
+  '@fontsource-variable/anek-tamil@5.3.0': {}
 
-  '@fontsource-variable/noto-sans@5.3.0': {}
+  '@fontsource-variable/anek-telugu@5.3.0': {}
 
-  '@img/colour@1.1.0': {}
+  '@fontsource-variable/jetbrains-mono@5.3.0': {}
+
+  '@fontsource-variable/noto-naskh-arabic@5.3.0': {}
+
+  '@img/colour@1.1.0':
+    optional: true
 
   '@img/sharp-darwin-arm64@0.35.5':
     optionalDependencies:
@@ -4121,6 +4124,7 @@ snapshots:
   '@quansync/fs@1.1.0':
     dependencies:
       quansync: 1.0.0
+    optional: true
 
   '@radix-ui/number@1.1.3': {}
 
@@ -5170,6 +5174,7 @@ snapshots:
       unconfig: 7.5.0
     transitivePeerDependencies:
       - '@types/node'
+    optional: true
 
   '@vitejs/plugin-react@6.3.0(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2))':
     dependencies:
@@ -5262,7 +5267,8 @@ snapshots:
 
   buffer-from@1.1.2: {}
 
-  cac@7.1.0: {}
+  cac@7.1.0:
+    optional: true
 
   call-bind-apply-helpers@1.0.2:
     dependencies:
@@ -5293,7 +5299,8 @@ snapshots:
 
   common-tags@1.8.2: {}
 
-  consola@3.4.2: {}
+  consola@3.4.2:
+    optional: true
 
   convert-source-map@2.0.0: {}
 
@@ -5337,12 +5344,14 @@ snapshots:
     dependencies:
       '@canvas/image-data': 1.1.0
       to-data-view: 1.1.0
+    optional: true
 
   decode-ico@0.4.1:
     dependencies:
       '@canvas/image-data': 1.1.0
       decode-bmp: 0.2.1
       to-data-view: 1.1.0
+    optional: true
 
   deepmerge@4.3.1: {}
 
@@ -5358,7 +5367,8 @@ snapshots:
       has-property-descriptors: 1.0.2
       object-keys: 1.1.1
 
-  defu@6.1.7: {}
+  defu@6.1.7:
+    optional: true
 
   detect-libc@2.1.2: {}
 
@@ -5605,7 +5615,8 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  ico-endec@0.1.6: {}
+  ico-endec@0.1.6:
+    optional: true
 
   idb@7.1.1: {}
 
@@ -5818,12 +5829,6 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@1.73.0(@types/react@19.3.0)(react@19.3.1):
-    dependencies:
-      react: 19.3.1
-    optionalDependencies:
-      '@types/react': 19.3.0
-
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -5911,7 +5916,8 @@ snapshots:
 
   pretty-bytes@6.1.1: {}
 
-  quansync@1.0.0: {}
+  quansync@1.0.0:
+    optional: true
 
   radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
@@ -6137,7 +6143,8 @@ snapshots:
 
   semver@6.3.2: {}
 
-  semver@7.8.6: {}
+  semver@7.8.6:
+    optional: true
 
   serialize-javascript@7.1.4: {}
 
@@ -6170,6 +6177,7 @@ snapshots:
       sharp: 0.35.5(@types/node@26.6.6)
     transitivePeerDependencies:
       - '@types/node'
+    optional: true
 
   sharp@0.35.5(@types/node@26.6.6):
     dependencies:
@@ -6203,6 +6211,7 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 26.6.6
+    optional: true
 
   shebang-command@2.0.0:
     dependencies:
@@ -6335,7 +6344,8 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
 
-  to-data-view@1.1.0: {}
+  to-data-view@1.1.0:
+    optional: true
 
   tslib@2.9.1: {}
 
@@ -6386,6 +6396,7 @@ snapshots:
     dependencies:
       '@quansync/fs': 1.1.0
       quansync: 1.0.0
+    optional: true
 
   unconfig@7.5.0:
     dependencies:
@@ -6394,6 +6405,7 @@ snapshots:
       jiti: 2.7.0
       quansync: 1.0.0
       unconfig-core: 7.5.0
+    optional: true
 
   undici-types@8.9.0: {}
 

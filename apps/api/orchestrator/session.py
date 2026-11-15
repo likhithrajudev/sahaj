@@ -8,6 +8,7 @@ from fastapi import WebSocket
 
 from advisory.flow import AdviceFlow
 from loan.flow import LoanCalc
+from orchestrator import citations
 from orchestrator.graph import GRAPH
 from orchestrator.turn import Turn
 from services import telemetry
@@ -154,10 +155,15 @@ class Session:
             if "plans" in turn.card:  # what "the first one" means in the next question
                 self.focus = [p.get("product_id") or p["id"] for p in turn.card["plans"]]
             await self.ws.send_json({"type": "card", "kind": turn.kind, "card": turn.card, "trace_id": trace.id})
-        await self.ws.send_json({
+        message = {
             "type": "assistant", "agent": turn.agent, "text": shown, "trace_id": trace.id,
-            "citations": [{"id": c, "text": turn.sources[c]} for c in cited if c in turn.sources],
-        })
+            "kind": turn.kind,           # answer | ask | confirm | recommendation | compare | calc
+            "fallback": bool(problem),   # the checks blocked the reply: this is the safe "I can't confirm" text
+            "citations": [citations.describe(c, turn.sources[c]) for c in cited if c in turn.sources],
+        }
+        if turn.progress:
+            message["progress"] = {"step": turn.progress[0], "total": turn.progress[1]}
+        await self.ws.send_json(message)
         async for chunk in speak(guardrails.strip_citations(shown), lang):
             await self.ws.send_bytes(chunk)
         await self.ws.send_json({"type": "done"})
@@ -181,6 +187,13 @@ class Session:
         self.handoff_ref = await handoff.create(self.id, reason, self.history, trace.id)
         trace.add("handoff", reason=reason, reference=self.handoff_ref)
         await self.ws.send_json({"type": "handoff", "reference": self.handoff_ref, "reason": reason})
+
+    async def status(self, step: str) -> None:
+        """What the turn is doing right now, so the UI can show it while the person waits."""
+        try:
+            await self.ws.send_json({"type": "status", "step": step})
+        except RuntimeError:  # the socket closed mid-turn; the turn's own error handling takes over
+            pass
 
     async def _error(self, message: str) -> None:
         await self.ws.send_json({"type": "error", "message": message})

@@ -68,11 +68,23 @@ def _ctx(run: RunnableConfig):
     return run["configurable"]["session"], run["configurable"]["trace"]
 
 
+# What the person sees while a node runs (a `status` event). Nodes not listed say nothing new.
+STATUS = {
+    "classify": "understanding",
+    "insurance_rag": "searching", "loan_rag": "searching",
+    "compare": "comparing", "calculator": "calculating", "advice": "thinking",
+    "guard": "checking",
+}
+
+
 def node(fn):
     """Time each node and record it, so the workflow report can show where a turn's time went."""
     @functools.wraps(fn)
     async def wrapper(state: State, config: RunnableConfig):
-        _, trace = _ctx(config)
+        session, trace = _ctx(config)
+        step = STATUS.get(fn.__name__)
+        if step and hasattr(session, "status"):
+            await session.status(step)
         started = time.perf_counter()
         update = await fn(state, config) or {}
         trace.add("node", name=fn.__name__, ms=round((time.perf_counter() - started) * 1000, 1))

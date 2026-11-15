@@ -25,7 +25,6 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: "autoUpdate",
         injectRegister: false, // registered in src/pwa.ts
-        pwaAssets: { config: true, overrideManifestIcons: true },
         manifest: {
           name: "Sahaj",
           short_name: "Sahaj",
@@ -35,11 +34,18 @@ export default defineConfig(({ mode }) => {
           scope: "/",
           display: "standalone",
           orientation: "portrait",
-          background_color: "#ffffff",
-          theme_color: "#0f3d3e",
+          background_color: "#004299", // the splash colour while the app starts
+          theme_color: "#F5F5F5",
+          // Rendered from the Anek स mark (committed PNGs: no Devanagari font is needed at build time)
+          icons: [
+            { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },
+            { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
+            { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },
+            { src: "maskable-icon-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          ],
         },
         workbox: {
-          globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
+          globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}", "**/material-symbols-*.woff2"], // icons work offline
           // Never serve the API, the socket or the old test page from the app shell.
           navigateFallbackDenylist: [/^\/(ws|stt|health|audit|docs|openapi\.json|redoc|test)(\/|$)/],
           runtimeCaching: [

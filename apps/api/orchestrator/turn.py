@@ -23,3 +23,4 @@ class Turn:
     request_consent: Optional[str] = None  # ask the person for this consent before anything else
     cache_key: Optional[tuple] = None      # store this reply in the verified-answer cache if it passes the checks
     from_cache: bool = False               # served from the verified-answer cache (already checked when stored)
+    progress: Optional[tuple] = None       # (step, total) of the needs analysis, for the UI's progress bar
